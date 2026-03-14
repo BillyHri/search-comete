@@ -13,8 +13,17 @@
  *     before calling filterCluster('all').
  */
 
-import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos, CLUSTER_COLORS } from './galaxy.js';
-import { doSearch }    from './search.js';
+import {
+  initGalaxy,
+  highlightStars,
+  clearHighlights,
+  flyTo,
+  flyToCluster,
+  getRemappedPos,
+  CLUSTER_COLORS,
+  setActiveYear
+} from './galaxy.js';
+import { doSearch } from './search.js';
 import { showDetail, closeDetail } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
 
@@ -23,8 +32,10 @@ document.getElementById('app').innerHTML = `
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-  <div class="wordmark">search<em>·comète</em></div>
-  <div class="tagline">Semantic search · Elasticsearch ELSER · Vector space exploration</div>
+  <div>
+    <div class="wordmark">search<em>·comète</em></div>
+    <div class="tagline">Semantic search · Elasticsearch ELSER · Vector space exploration</div>
+  </div>
   <div class="elastic-pill"><div class="es-dot"></div>ELASTIC · kNN</div>
 </div>
 
@@ -45,6 +56,14 @@ document.getElementById('app').innerHTML = `
 
 <div id="results-label"></div>
 
+<div id="time-travel">
+  <div class="tt-heading">TIME TRAVEL</div>
+  <input id="year-slider" type="range" />
+  <div id="year-readout">ALL YEARS</div>
+</div>
+
+<div id="meteor-fact"></div>
+
 <div id="legend">
   <div class="legend-row active" data-cluster="all">
     <div class="legend-dot" style="background:rgba(245,242,235,0.4)"></div>ALL FIELDS
@@ -60,6 +79,9 @@ document.getElementById('app').innerHTML = `
   <div id="detail-title"></div>
   <div id="detail-authors"></div>
   <div id="detail-year"></div>
+  <div id="detail-actions">
+    <button id="pin-btn" class="detail-action-btn">☆ PIN AS STAR</button>
+  </div>
   <div class="detail-field-label">Abstract</div>
   <div id="detail-abstract"></div>
   <div class="detail-field-label">Semantic relevance score</div>
@@ -176,6 +198,93 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 .loader-bar { height:100%; width:0%; background:var(--gold); border-radius:2px; animation:load-progress 2s ease-in-out forwards; }
 @keyframes load-progress { 0%{width:0%} 60%{width:75%} 90%{width:92%} 100%{width:100%} }
 .loader-label { font-family:var(--mono); font-size:10px; letter-spacing:0.15em; color:rgba(245,242,235,0.3); text-transform:uppercase; }
+
+#time-travel {
+  position: fixed;
+  right: 24px;
+  top: 170px;
+  z-index: 10;
+  width: 220px;
+  background: rgba(10,10,18,0.78);
+  border: 0.5px solid rgba(245,242,235,0.1);
+  padding: 12px 14px;
+  border-radius: 2px;
+  backdrop-filter: blur(8px);
+}
+.tt-heading {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+#year-slider {
+  width: 100%;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+#year-readout {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(245,242,235,0.45);
+}
+
+#meteor-fact {
+  position: fixed;
+  right: 24px;
+  bottom: 80px;
+  width: 280px;
+  z-index: 10;
+  background: rgba(10,10,18,0.78);
+  border: 0.5px solid rgba(245,242,235,0.1);
+  padding: 14px 16px;
+  border-radius: 2px;
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+}
+#meteor-fact .meteor-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+#meteor-fact .meteor-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper);
+  margin-bottom: 6px;
+}
+#meteor-fact .meteor-meta {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(245,242,235,0.38);
+  line-height: 1.6;
+}
+
+#detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.detail-action-btn {
+  background: rgba(245,242,235,0.04);
+  border: 0.5px solid rgba(245,242,235,0.12);
+  color: var(--gold);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.detail-action-btn:hover {
+  background: rgba(201,168,76,0.08);
+  border-color: rgba(201,168,76,0.35);
+}
 `;
 document.head.appendChild(style);
 
@@ -349,9 +458,66 @@ const CLUSTER_LABELS = {
   economics:'ECONOMICS', environment:'ENVIRONMENT', medicine:'MEDICINE',
 };
 
+function buildMeteorFact(stars) {
+  const meteor = document.getElementById('meteor-fact');
+  if (!meteor || !stars.length) return;
+
+  const mostCited = [...stars].sort((a, b) => (b.cite ?? b.citations ?? 0) - (a.cite ?? a.citations ?? 0))[0];
+  const newest = [...stars].sort((a, b) => (b.year || 0) - (a.year || 0))[0];
+  const picks = [
+    {
+      title: mostCited.title,
+      meta: `Most cited object in this universe · ${(mostCited.cite ?? mostCited.citations ?? 0).toLocaleString()} citations`
+    },
+    {
+      title: newest.title,
+      meta: `Newest signal detected · ${newest.year || 'Unknown year'}`
+    },
+    {
+      title: stars[Math.floor(Math.random() * stars.length)].title,
+      meta: `Meteor of the day · Random jump target`
+    }
+  ];
+
+  const pick = picks[Math.floor(Math.random() * picks.length)];
+  meteor.innerHTML = `
+    <div class="meteor-label">METEOR OF THE DAY</div>
+    <div class="meteor-title">${pick.title}</div>
+    <div class="meteor-meta">${pick.meta}</div>
+  `;
+}
+
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
+  
+  buildMeteorFact(stars);
+
+  const years = stars.map(s => Number(s.year)).filter(Number.isFinite);
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+
+  const slider = document.getElementById('year-slider');
+  const readout = document.getElementById('year-readout');
+
+  slider.min = minYear;
+  slider.max = maxYear;
+  slider.step = 1;
+  slider.value = maxYear;
+
+  const syncYear = () => {
+    const y = Number(slider.value);
+    if (y >= maxYear) {
+      setActiveYear(Infinity);
+      readout.textContent = 'ALL YEARS';
+    } else {
+      setActiveYear(y);
+      readout.textContent = `VISIBLE THROUGH ${y}`;
+    }
+  };
+
+  slider.addEventListener('input', syncYear);
+  syncYear();
 
   // FIX: Rebuild legend AFTER initGalaxy() so CLUSTER_COLORS is populated.
   // Use a short rAF delay to let _discoverClusters() finish synchronously inside initGalaxy.

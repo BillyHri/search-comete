@@ -92,6 +92,8 @@ let basePosArray;
 let edgeSegments;
 let ringMesh, ringMat;
 let animFrame;
+let activeYear = Infinity;
+const pinnedIds = new Set();
 
 const pivot       = new THREE.Vector3(0, 0, 0);
 const pivotTarget = new THREE.Vector3(0, 0, 0);
@@ -111,6 +113,47 @@ const _floatDummy = new THREE.Object3D();
 
 const _remappedPos = {};
 export function getRemappedPos(id) { return _remappedPos[String(id)]; }
+
+function _isYearVisible(star) {
+  if (!Number.isFinite(activeYear)) return true;
+  const y = Number(star.year);
+  return !Number.isFinite(y) || y <= activeYear;
+}
+
+function _baseScaleForStar(star) {
+  if (!_isYearVisible(star)) return 0.01;
+
+  const cite = Math.max(0, Number(star.cite ?? star.citations ?? 0));
+  const norm = Math.min(1, Math.log10(cite + 1) / 5); // 0..1 roughly
+  let scale = 0.72 + norm * 1.28;
+
+  if (pinnedIds.has(String(star.id))) scale *= 1.55;
+  return scale;
+}
+function _baseColorForStar(star) {
+  if (pinnedIds.has(String(star.id))) return 0xffc857;
+  return CLUSTER_COLORS[star.cluster] || DEFAULT_COLOR;
+}
+
+function _applyVisualState(entry, opts = {}) {
+  const { scaleMul = 1, colorHex = null } = opts;
+  const { star, tierMesh, localId, globalIdx } = entry;
+
+  const b = basePosArray;
+  dummy.position.set(b[globalIdx * 3], b[globalIdx * 3 + 1], b[globalIdx * 3 + 2]);
+  dummy.quaternion.identity();
+  dummy.scale.setScalar(Math.max(0.01, _baseScaleForStar(star) * scaleMul));
+  dummy.updateMatrix();
+  tierMesh.setMatrixAt(localId, dummy.matrix);
+
+  _col.setHex(colorHex ?? _baseColorForStar(star));
+  tierMesh.setColorAt(localId, _col);
+}
+
+function _applyVisualStateAll() {
+  starDataArray.forEach(entry => _applyVisualState(entry));
+  _flushAll();
+}
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
@@ -202,67 +245,77 @@ function _remapStars(stars) {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+export function isPinned(id) {
+  return pinnedIds.has(String(id));
+}
+
+export function togglePinned(id) {
+  const key = String(id);
+  if (pinnedIds.has(key)) pinnedIds.delete(key);
+  else pinnedIds.add(key);
+  _applyVisualStateAll();
+  return pinnedIds.has(key);
+}
+
+export function setActiveYear(year) {
+  activeYear = Number.isFinite(year) ? year : Infinity;
+  _applyVisualStateAll();
+  if (edgeSegments) edgeSegments.material.opacity = Number.isFinite(activeYear) ? 0.18 : 0.45;
+}
+
 
 export function highlightStars(ids) {
   const set = new Set(ids.map(String));
-  starDataArray.forEach(({ star, tierMesh, localId, globalIdx }) => {
-    const hit = set.has(String(star.id));
-    _col.setHex(hit ? 0xffffff : (CLUSTER_COLORS[star.cluster] || DEFAULT_COLOR));
-    tierMesh.setColorAt(localId, _col);
-    const b = basePosArray;
-    dummy.position.set(b[globalIdx*3], b[globalIdx*3+1], b[globalIdx*3+2]);
-    dummy.quaternion.identity();
-    dummy.scale.setScalar(hit ? 2.2 : 0.01);
-    dummy.updateMatrix();
-    tierMesh.setMatrixAt(localId, dummy.matrix);
+  starDataArray.forEach(entry => {
+    if (!_isYearVisible(entry.star)) {
+      _applyVisualState(entry);
+      return;
+    }
+
+    const hit = set.has(String(entry.star.id));
+    if (hit) {
+      _applyVisualState(entry, { scaleMul: 1.8, colorHex: 0xffffff });
+    } else {
+      _applyVisualState(entry, { scaleMul: 0.35, colorHex: 0x3a3a52 });
+    }
   });
   _flushAll();
   if (edgeSegments) edgeSegments.material.opacity = 0.02;
 }
 
 export function clearHighlights() {
-  starDataArray.forEach(({ star, tierMesh, localId, globalIdx }) => {
-    _col.setHex(CLUSTER_COLORS[star.cluster] || DEFAULT_COLOR);
-    tierMesh.setColorAt(localId, _col);
-    const b = basePosArray;
-    dummy.position.set(b[globalIdx*3], b[globalIdx*3+1], b[globalIdx*3+2]);
-    dummy.quaternion.identity();
-    dummy.scale.setScalar(1);
-    dummy.updateMatrix();
-    tierMesh.setMatrixAt(localId, dummy.matrix);
-  });
-  _flushAll();
-  if (edgeSegments) edgeSegments.material.opacity = 0.45;
+  _applyVisualStateAll();
+  if (edgeSegments) edgeSegments.material.opacity = Number.isFinite(activeYear) ? 0.18 : 0.45;
 }
 
 export function filterCluster(clusterId) {
   clearHighlights();
+
   if (clusterId === 'all') {
     pivotTarget.set(0, 0, 0);
     tgtR = 85;
-    // Restore all stars to full size and edges to normal opacity
-    if (edgeSegments) edgeSegments.material.opacity = 0.45;
-    starDataArray.forEach(({ tierMesh, localId, globalIdx }) => {
-      const b = basePosArray;
-      dummy.position.set(b[globalIdx*3], b[globalIdx*3+1], b[globalIdx*3+2]);
-      dummy.quaternion.identity();
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      tierMesh.setMatrixAt(localId, dummy.matrix);
-    });
+    starDataArray.forEach(entry => _applyVisualState(entry));
     _flushAll(true);
     return;
   }
 
-  starDataArray.forEach(({ star, tierMesh, localId, globalIdx }) => {
-    const match = star.cluster === clusterId;
-    const b = basePosArray;
-    dummy.position.set(b[globalIdx*3], b[globalIdx*3+1], b[globalIdx*3+2]);
-    dummy.quaternion.identity();
-    dummy.scale.setScalar(match ? 1.2 : 0.01);
-    dummy.updateMatrix();
-    tierMesh.setMatrixAt(localId, dummy.matrix);
+  starDataArray.forEach(entry => {
+    const match = entry.star.cluster === clusterId && _isYearVisible(entry.star);
+    if (match) {
+      _applyVisualState(entry, { scaleMul: 1.2 });
+    } else {
+      const { tierMesh, localId, globalIdx } = entry;
+      const b = basePosArray;
+      dummy.position.set(b[globalIdx * 3], b[globalIdx * 3 + 1], b[globalIdx * 3 + 2]);
+      dummy.quaternion.identity();
+      dummy.scale.setScalar(0.01);
+      dummy.updateMatrix();
+      tierMesh.setMatrixAt(localId, dummy.matrix);
+      _col.setHex(_baseColorForStar(entry.star));
+      tierMesh.setColorAt(localId, _col);
+    }
   });
+
   _flushAll(true);
   if (edgeSegments) edgeSegments.material.opacity = 0.01;
 
@@ -395,10 +448,10 @@ function _buildStars(stars) {
 
   stars.forEach((star, gi) => {
     const cite = star.cite; // always a number after _normaliseCite
-    _col.setHex(CLUSTER_COLORS[star.cluster] || DEFAULT_COLOR);
+    _col.setHex(_baseColorForStar(star));
     dummy.position.set(star.x, star.y, star.z);
     dummy.quaternion.identity();
-    dummy.scale.setScalar(1);
+    dummy.scale.setScalar(_baseScaleForStar(star));
     dummy.updateMatrix();
 
     basePosArray[gi*3]   = star.x;
@@ -489,7 +542,7 @@ function _buildEdges(stars) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
   edgeSegments = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.5,
+    vertexColors: true, transparent: true, opacity: document.body.dataset.theme === 'light' ? 0.18 : 0.5,
     depthWrite: false, blending: THREE.AdditiveBlending,
   }));
   scene.add(edgeSegments);
