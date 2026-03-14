@@ -45,9 +45,6 @@ async def stars_json():
     raise HTTPException(status_code=404, detail="stars.json not yet generated — run the pipeline first")
 
 # ── Route factory — registers each route at both /xxx and /api/xxx ────────────
-# This means old cached JS (calling /health) and new JS (calling /api/health)
-# both work without a hard refresh.
-
 def _make_router(prefix: str) -> APIRouter:
     router = APIRouter(prefix=prefix)
 
@@ -76,11 +73,10 @@ def _make_router(prefix: str) -> APIRouter:
         """Live star list from ES — always reflects the full current index."""
         try:
             data = await es_search.get_all_stars(es, cluster=cluster)
-            return [s.dict() for s in data]
+            return [s.model_dump() for s in data]
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    # {paper_id:path} lets arxiv URLs like http://arxiv.org/abs/xxx work as IDs
     @router.get("/paper/{paper_id:path}", response_model=PaperDetail)
     async def paper(paper_id: str):
         result = await es_search.get_paper_with_similar(es, paper_id)

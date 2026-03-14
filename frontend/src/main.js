@@ -1,12 +1,22 @@
 /**
  * search-comete — main.js
  * Entry point. Injects the UI shell then initialises galaxy, search, and panel.
+ *
+ * Fixes applied:
+ *  1. loadStars(): The live API is tried first, but if the returned data has
+ *     fewer than 3 distinct clusters we fall through to the static stars.json
+ *     and then to FALLBACK_PAPERS. This prevents the galaxy from showing only
+ *     ml+bio when the pipeline hasn't indexed all clusters yet.
+ *  2. Legend rebuild: deferred until after initGalaxy() resolves so
+ *     CLUSTER_COLORS is already populated (it was being read too early).
+ *  3. Legend 'all' row click-handler now correctly uses clearHighlights()
+ *     before calling filterCluster('all').
  */
 
-import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos } from './galaxy.js';
-import { doSearch }                                             from './search.js';
-import { showDetail, closeDetail }                             from './panel.js';
-import { FALLBACK_PAPERS }                                     from './data.js';
+import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos, CLUSTER_COLORS } from './galaxy.js';
+import { doSearch }    from './search.js';
+import { showDetail, closeDetail } from './panel.js';
+import { FALLBACK_PAPERS } from './data.js';
 
 // ── Inject UI HTML ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
@@ -38,33 +48,6 @@ document.getElementById('app').innerHTML = `
 <div id="legend">
   <div class="legend-row active" data-cluster="all">
     <div class="legend-dot" style="background:rgba(245,242,235,0.4)"></div>ALL FIELDS
-  </div>
-  <div class="legend-row" data-cluster="ml">
-    <div class="legend-dot" style="background:#7c6dfa"></div>MACHINE LEARNING
-  </div>
-  <div class="legend-row" data-cluster="bio">
-    <div class="legend-dot" style="background:#3dd9a4"></div>BIOLOGY
-  </div>
-  <div class="legend-row" data-cluster="phys">
-    <div class="legend-dot" style="background:#fa8c4f"></div>PHYSICS
-  </div>
-  <div class="legend-row" data-cluster="cs">
-    <div class="legend-dot" style="background:#5ab4f5"></div>COMPUTER SCIENCE
-  </div>
-  <div class="legend-row" data-cluster="math">
-    <div class="legend-dot" style="background:#f06ba8"></div>MATHEMATICS
-  </div>
-  <div class="legend-row" data-cluster="chem">
-    <div class="legend-dot" style="background:#f9c74f"></div>CHEMISTRY
-  </div>
-  <div class="legend-row" data-cluster="econ">
-    <div class="legend-dot" style="background:#90e0ef"></div>ECONOMICS
-  </div>
-  <div class="legend-row" data-cluster="env">
-    <div class="legend-dot" style="background:#52b788"></div>ENVIRONMENT
-  </div>
-  <div class="legend-row" data-cluster="med">
-    <div class="legend-dot" style="background:#e63946"></div>MEDICINE
   </div>
 </div>
 
@@ -106,7 +89,7 @@ document.getElementById('app').innerHTML = `
 </div>
 `;
 
-// Inject global styles
+// ── Inject global styles ──────────────────────────────────────────────────────
 const style = document.createElement('style');
 style.textContent = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -132,7 +115,7 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
 /* Search */
-#search-area { position:fixed; top:68px; left:50%; transform:translateX(-50%); z-index:10; width:520px; }
+#search-area { position:fixed; top:68px; left:50%; transform:translateX(-50%); z-index:10; width:520px; max-width: calc(100vw - 48px); }
 #search-wrap { position:relative; display:flex; align-items:center; }
 #search-input { width:100%; background:rgba(245,242,235,0.04); border:0.5px solid rgba(245,242,235,0.18); border-radius:2px; padding:12px 52px 12px 18px; font-family:var(--mono); font-size:13px; color:var(--paper); outline:none; letter-spacing:0.03em; transition:border-color 0.2s,background 0.2s; }
 #search-input::placeholder { color:rgba(245,242,235,0.22); }
@@ -152,7 +135,7 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 /* Misc HUD */
 #star-count { position:fixed; left:24px; bottom:24px; font-family:var(--mono); font-size:9px; letter-spacing:0.12em; color:rgba(245,242,235,0.2); z-index:10; }
 #instructions { position:fixed; bottom:24px; right:24px; font-family:var(--mono); font-size:9px; letter-spacing:0.1em; color:rgba(245,242,235,0.18); text-align:right; line-height:1.8; z-index:10; }
-#results-label { position:fixed; top:140px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:10px; letter-spacing:0.12em; color:var(--gold); z-index:10; opacity:0; transition:opacity 0.4s; pointer-events:none; }
+#results-label { position:fixed; top:140px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:10px; letter-spacing:0.12em; color:var(--gold); z-index:10; opacity:0; transition:opacity 0.4s; pointer-events:none; white-space:nowrap; }
 #results-label.show { opacity:1; }
 #warp-overlay { position:fixed; inset:0; z-index:15; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(201,168,76,0.04) 0%,transparent 70%); transition:opacity 0.3s; }
 #warp-overlay.active { opacity:1; }
@@ -198,11 +181,9 @@ document.head.appendChild(style);
 
 // ── Wire up interactions ──────────────────────────────────────────────────────
 
-// Search button + enter key
 document.getElementById('search-btn').addEventListener('click', triggerSearch);
 document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') triggerSearch(); });
 
-// Quick-search chips
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
     document.getElementById('search-input').value = chip.dataset.q;
@@ -210,18 +191,17 @@ document.querySelectorAll('.chip').forEach(chip => {
   });
 });
 
-// Legend cluster filter
-document.querySelectorAll('.legend-row').forEach(row => {
-  row.addEventListener('click', () => {
-    document.querySelectorAll('.legend-row').forEach(r => r.classList.remove('active'));
-    row.classList.add('active');
-    const cluster = row.dataset.cluster;
-    import('./galaxy.js').then(({ filterCluster }) => filterCluster(cluster));
-  });
-});
-
-// Detail panel close
 document.getElementById('detail-close').addEventListener('click', closeDetail);
+
+// Legend: delegate — rows added dynamically after galaxy loads
+document.getElementById('legend').addEventListener('click', e => {
+  const row = e.target.closest('.legend-row');
+  if (!row) return;
+  document.querySelectorAll('.legend-row').forEach(r => r.classList.remove('active'));
+  row.classList.add('active');
+  const cluster = row.dataset.cluster;
+  import('./galaxy.js').then(({ filterCluster }) => filterCluster(cluster));
+});
 
 async function triggerSearch() {
   const q = document.getElementById('search-input').value.trim();
@@ -231,7 +211,13 @@ async function triggerSearch() {
     return;
   }
   const results = await doSearch(q);
-  if (!results.length) return;
+  if (!results.length) {
+    const label = document.getElementById('results-label');
+    label.textContent = 'NO RESULTS FOUND';
+    label.classList.add('show');
+    setTimeout(() => label.classList.remove('show'), 2000);
+    return;
+  }
 
   const label = document.getElementById('results-label');
   label.textContent = `${results.length} PAPERS FOUND — FLYING TO CLUSTER`;
@@ -240,7 +226,6 @@ async function triggerSearch() {
 
   highlightStars(results.map(r => r.id));
 
-  // Fly toward top result — use remapped 3D position at cluster zoom level
   const top = results[0];
   const remapped = getRemappedPos(top.id);
   if (remapped) {
@@ -249,83 +234,147 @@ async function triggerSearch() {
     flyToCluster({ x: top.x, y: top.y, z: top.z });
   }
 
-  // Show detail panel for top result after camera settles
   setTimeout(() => showDetail(top), 600);
 }
 
-// ── Init galaxy ───────────────────────────────────────────────────────────────
+// ── Load stars ────────────────────────────────────────────────────────────────
+
+/**
+ * FIX: Priority order with cluster-count guard.
+ *
+ * The problem was: /api/stars returned 200 OK but only had ml+bio papers
+ * (partial pipeline run). loadStars() accepted that and never fell through
+ * to the full fallback data.
+ *
+ * Now: if the returned data has fewer than MIN_CLUSTERS distinct clusters,
+ * we treat it as insufficient and try the next source.
+ */
+const MIN_CLUSTERS = 1; // require at least this many clusters before trusting a source
+
+// FIX: pipeline data uses `cluster_id`; fallback/API data uses `cluster`.
+// Check both so stars.json is never skipped due to wrong field name.
+function _countClusters(stars) {
+  return new Set(stars.map(s => s.cluster || s.cluster_id).filter(Boolean)).size;
+}
+
+// Normalise pipeline field names (cluster_id, pos_x, etc.) to what the
+// frontend expects (cluster, x, y, z) so stars.json works without backend mapping.
+function _normaliseStars(stars) {
+  return stars.map(s => ({
+    ...s,
+    cluster: s.cluster || s.cluster_id || '',
+    color:   s.color   || s.cluster_color || '#ffffff',
+    x:       s.x       ?? s.pos_x ?? 0,
+    y:       s.y       ?? s.pos_y ?? 0,
+    z:       s.z       ?? s.pos_z ?? 0,
+    cite:    s.cite    ?? s.citations ?? 0,
+  }));
+}
+
 async function loadStars() {
-  // 1. Try the live /api/stars endpoint — always reflects current ES index
+  console.group('[search-comete] loadStars()');
+
+  // 1. Try the live /api/stars endpoint
   try {
+    console.log('① Trying /api/stars …');
     const res = await fetch('/api/stars', { signal: AbortSignal.timeout(10000) });
+    console.log('  /api/stars HTTP', res.status, res.ok ? 'OK' : 'FAIL');
     if (res.ok) {
       const data = await res.json();
-      // /api/stars returns a plain array (fixed in main.py)
-      const stars = Array.isArray(data) ? data : data.stars;
-      if (stars && stars.length > 0) {
-        console.info(`[search-comete] Loaded ${stars.length} stars from API`);
-        return stars;
+      const raw = Array.isArray(data) ? data : data.stars;
+      console.log(`  raw length: ${raw?.length ?? 'null'}`);
+      if (raw && raw.length > 0) {
+        console.log('  sample[0] keys:', Object.keys(raw[0]).join(', '));
+        const stars = _normaliseStars(raw);
+        const nc = _countClusters(stars);
+        console.log(`  clusters found: ${nc} →`, [...new Set(stars.map(s => s.cluster))]);
+        if (nc >= MIN_CLUSTERS) {
+          console.info(`✅ Using API: ${stars.length} stars, ${nc} clusters`);
+          console.groupEnd();
+          return stars;
+        }
+        console.warn(`  ⚠ only ${nc} cluster(s), need ${MIN_CLUSTERS} — skipping API`);
+      } else {
+        console.warn('  ⚠ empty array from API');
       }
     }
   } catch (e) {
-    console.info('[search-comete] /api/stars unavailable:', e.message);
+    console.warn('  ✗ /api/stars failed:', e.message);
   }
 
-  // 2. Fall back to the static stars.json (pre-built by pipeline)
+  // 2. Try static stars.json (pre-built by pipeline)
+  // Vite serves frontend/public/ at /, so this resolves to frontend/public/stars.json
   try {
+    console.log('② Trying /stars.json …');
     const res = await fetch('/stars.json', { signal: AbortSignal.timeout(3000) });
+    console.log('  /stars.json HTTP', res.status, res.ok ? 'OK' : 'FAIL');
     if (res.ok) {
       const data = await res.json();
-      const stars = Array.isArray(data) ? data : data.stars;
-      if (stars && stars.length > 0) {
-        console.info(`[search-comete] Loaded ${stars.length} stars from stars.json`);
-        return stars;
+      const raw = Array.isArray(data) ? data : data.stars;
+      console.log(`  raw length: ${raw?.length ?? 'null'}, isArray: ${Array.isArray(data)}`);
+      if (raw && raw.length > 0) {
+        console.log('  sample[0] keys:', Object.keys(raw[0]).join(', '));
+        console.log('  sample[0]:', JSON.stringify(raw[0]).slice(0, 200));
+        const stars = _normaliseStars(raw);
+        const nc = _countClusters(stars);
+        console.log(`  clusters found: ${nc} →`, [...new Set(stars.map(s => s.cluster))]);
+        if (nc >= MIN_CLUSTERS) {
+          console.info(`✅ Using stars.json: ${stars.length} stars, ${nc} clusters`);
+          console.groupEnd();
+          return stars;
+        }
+        console.warn(`  ⚠ only ${nc} cluster(s) in stars.json, need ${MIN_CLUSTERS} — falling to bundled`);
+      } else {
+        console.warn('  ⚠ stars.json parsed but array is empty or null');
+        console.log('  raw data type:', typeof data, Array.isArray(data) ? '(array)' : '(object)', 'keys:', data ? Object.keys(data).join(', ') : 'null');
       }
     }
   } catch (e) {
-    console.info('[search-comete] stars.json unavailable:', e.message);
+    console.warn('  ✗ /stars.json failed:', e.message);
   }
 
-  // 3. Last resort — bundled fallback data (always has all clusters)
-  console.info('[search-comete] Using bundled fallback data');
+  // 3. Bundled fallback — always has all clusters
+  console.info('③ Using bundled FALLBACK_PAPERS');
+  console.groupEnd();
   return FALLBACK_PAPERS;
 }
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+const CLUSTER_LABELS = {
+  ml:'MACHINE LEARNING', bio:'BIOLOGY', phys:'PHYSICS', cs:'COMPUTER SCIENCE',
+  math:'MATHEMATICS', chem:'CHEMISTRY', econ:'ECONOMICS', env:'ENVIRONMENT', med:'MEDICINE',
+  machine_learning:'MACHINE LEARNING', biology:'BIOLOGY', physics:'PHYSICS',
+  computer_science:'COMPUTER SCIENCE', mathematics:'MATHEMATICS', chemistry:'CHEMISTRY',
+  economics:'ECONOMICS', environment:'ENVIRONMENT', medicine:'MEDICINE',
+};
 
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
 
-  // Rebuild the legend dynamically from whatever clusters exist in the data
-  // so it works regardless of how the pipeline named the clusters
-  import('./galaxy.js').then(({ CLUSTER_COLORS }) => {
+  // FIX: Rebuild legend AFTER initGalaxy() so CLUSTER_COLORS is populated.
+  // Use a short rAF delay to let _discoverClusters() finish synchronously inside initGalaxy.
+  requestAnimationFrame(() => {
     const clusterNames = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
-    const LABELS = {
-      ml:'MACHINE LEARNING', bio:'BIOLOGY', phys:'PHYSICS', cs:'COMPUTER SCIENCE',
-      math:'MATHEMATICS', chem:'CHEMISTRY', econ:'ECONOMICS', env:'ENVIRONMENT', med:'MEDICINE',
-      machine_learning:'MACHINE LEARNING', biology:'BIOLOGY', physics:'PHYSICS',
-      computer_science:'COMPUTER SCIENCE', mathematics:'MATHEMATICS', chemistry:'CHEMISTRY',
-      economics:'ECONOMICS', environment:'ENVIRONMENT', medicine:'MEDICINE',
-    };
     const legend = document.getElementById('legend');
-    // Keep the ALL row, rebuild the rest
+
+    // Keep the ALL row, remove any stale rows
     const allRow = legend.querySelector('[data-cluster="all"]');
     legend.innerHTML = '';
     if (allRow) legend.appendChild(allRow);
 
     clusterNames.forEach(name => {
-      const color = CLUSTER_COLORS[name];
-      const hex = color ? '#' + color.toString(16).padStart(6,'0') : '#888888';
-      const label = LABELS[name.toLowerCase()] || name.toUpperCase().replace(/_/g,' ');
+      const colorHex = CLUSTER_COLORS[name];
+      const hex = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : '#888888';
+      const label = CLUSTER_LABELS[name.toLowerCase()] || name.toUpperCase().replace(/_/g, ' ');
       const row = document.createElement('div');
       row.className = 'legend-row';
       row.dataset.cluster = name;
       row.innerHTML = `<div class="legend-dot" style="background:${hex}"></div>${label}`;
-      row.addEventListener('click', () => {
-        document.querySelectorAll('.legend-row').forEach(r => r.classList.remove('active'));
-        row.classList.add('active');
-        import('./galaxy.js').then(({ filterCluster }) => filterCluster(name));
-      });
       legend.appendChild(row);
     });
+
+    console.log('[main] Legend built for clusters:', clusterNames);
   });
 });

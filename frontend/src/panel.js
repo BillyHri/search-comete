@@ -1,12 +1,21 @@
 /**
  * search-comete — panel.js
  * Manages the right-hand detail panel: show, close, similar papers.
+ *
+ * Fixes applied:
+ *  1. _getCite(): papers from the API use `citations`; fallback papers use
+ *     `cite`. We unify here so the year/citations line always shows correctly.
+ *  2. Similar-item click: uses getRemappedPos() for the correct world position
+ *     (not the raw UMAP coords from FALLBACK_PAPERS).
+ *  3. CLUSTER_CSS / CLUSTER_LABELS extended to cover all known cluster names
+ *     including full-name variants returned by the pipeline.
  */
 
 import { FALLBACK_PAPERS } from './data.js';
 import { flyTo, getRemappedPos } from './galaxy.js';
 
 const CLUSTER_CSS = {
+  // Short codes
   ml:   'var(--glow-ml)',
   bio:  'var(--glow-bio)',
   phys: 'var(--glow-phys)',
@@ -16,6 +25,27 @@ const CLUSTER_CSS = {
   econ: '#90e0ef',
   env:  '#52b788',
   med:  '#e63946',
+  // Full-name variants (from pipeline)
+  machine_learning: 'var(--glow-ml)',
+  'machine learning': 'var(--glow-ml)',
+  biology:          'var(--glow-bio)',
+  bioinformatics:   'var(--glow-bio)',
+  physics:          'var(--glow-phys)',
+  astrophysics:     'var(--glow-phys)',
+  computer_science: 'var(--glow-cs)',
+  'computer science':'var(--glow-cs)',
+  mathematics:      'var(--glow-math)',
+  statistics:       'var(--glow-math)',
+  chemistry:        '#f9c74f',
+  materials:        '#f9c74f',
+  economics:        '#90e0ef',
+  finance:          '#90e0ef',
+  environment:      '#52b788',
+  environmental:    '#52b788',
+  medicine:         '#e63946',
+  medical:          '#e63946',
+  healthcare:       '#e63946',
+  clinical:         '#e63946',
 };
 
 const CLUSTER_LABELS = {
@@ -28,11 +58,38 @@ const CLUSTER_LABELS = {
   econ: 'Economics',
   env:  'Environment',
   med:  'Medicine',
+  machine_learning: 'Machine Learning',
+  'machine learning': 'Machine Learning',
+  biology:          'Biology',
+  bioinformatics:   'Bioinformatics',
+  physics:          'Physics',
+  astrophysics:     'Astrophysics',
+  computer_science: 'Computer Science',
+  'computer science': 'Computer Science',
+  mathematics:      'Mathematics',
+  statistics:       'Statistics',
+  chemistry:        'Chemistry',
+  materials:        'Materials Science',
+  economics:        'Economics',
+  finance:          'Finance',
+  environment:      'Environment',
+  environmental:    'Environmental Science',
+  medicine:         'Medicine',
+  medical:          'Medicine',
+  healthcare:       'Healthcare',
+  clinical:         'Clinical Research',
 };
 
+// FIX 1: unified cite getter — handles both `cite` and `citations` field names
+function _getCite(paper) {
+  const v = paper.cite ?? paper.citations ?? 0;
+  return typeof v === 'number' ? v : 0;
+}
+
 export function showDetail(paper) {
-  const css   = CLUSTER_CSS[paper.cluster]  || '#ffffff';
-  const label = CLUSTER_LABELS[paper.cluster] || paper.cluster;
+  const clusterKey = (paper.cluster || '').toLowerCase().trim();
+  const css   = CLUSTER_CSS[clusterKey]   || CLUSTER_CSS[paper.cluster]   || '#ffffff';
+  const label = CLUSTER_LABELS[clusterKey] || CLUSTER_LABELS[paper.cluster] || paper.cluster || 'Unknown';
 
   const badge = document.getElementById('detail-category');
   badge.textContent  = label.toUpperCase();
@@ -42,7 +99,7 @@ export function showDetail(paper) {
   document.getElementById('detail-title').textContent    = paper.title   || '—';
   document.getElementById('detail-authors').textContent  = paper.authors  || '—';
   document.getElementById('detail-year').textContent     =
-    `${paper.year || ''}  ·  ${(paper.cite ?? paper.citations ?? 0).toLocaleString()} citations`;
+    `${paper.year || ''}  ·  ${_getCite(paper).toLocaleString()} citations`;
   document.getElementById('detail-abstract').textContent = paper.abstract || '—';
 
   const score = paper.score !== undefined ? paper.score : 0.5 + Math.random() * 0.4;
@@ -53,6 +110,7 @@ export function showDetail(paper) {
 
   _loadSimilar(paper);
 
+  const kw = (paper.keywords || [])[0] || (paper.title || '').split(' ')[0] || '';
   document.getElementById('elastic-query').textContent =
 `GET /knowledge_galaxy/_search
 {
@@ -64,7 +122,7 @@ export function showDetail(paper) {
   },
   "query": {
     "match": {
-      "abstract": "${(paper.keywords || [])[0] || paper.title?.split(' ')[0] || ''}"
+      "abstract": "${kw}"
     }
   }
 }`;
@@ -82,6 +140,7 @@ async function _loadSimilar(paper) {
 
   let similar = [];
 
+  // Try live API first
   try {
     const res = await fetch(`/api/paper/${encodeURIComponent(paper.id)}`, {
       signal: AbortSignal.timeout(3000),
@@ -91,16 +150,26 @@ async function _loadSimilar(paper) {
       similar = (data.similar || []).slice(0, 5);
     }
   } catch {
+    // Fall through to local similar
+  }
+
+  // FIX 2: local fallback — find papers in same cluster, shuffled
+  if (!similar.length) {
     similar = FALLBACK_PAPERS
-      .filter(p => p.cluster === paper.cluster && p.id !== paper.id)
+      .filter(p => p.cluster === paper.cluster && String(p.id) !== String(paper.id))
       .sort(() => Math.random() - 0.5)
       .slice(0, 5)
       .map(p => ({ id: p.id, title: p.title, authors: p.authors, year: p.year }));
   }
 
+  if (!similar.length) {
+    container.innerHTML = '<div style="font-family:var(--mono);font-size:9px;color:rgba(245,242,235,0.3);padding:4px 0;">No similar papers found.</div>';
+    return;
+  }
+
   container.innerHTML = similar.map(s => `
     <div class="similar-item" data-id="${s.id}">
-      <div class="similar-title">${s.title}</div>
+      <div class="similar-title">${s.title || '—'}</div>
       <div class="similar-meta">${(s.authors||'').split(',')[0]} · ${s.year || ''}</div>
     </div>
   `).join('');
@@ -111,21 +180,22 @@ async function _loadSimilar(paper) {
       const found = FALLBACK_PAPERS.find(p => String(p.id) === String(id));
       if (!found) return;
       showDetail(found);
-      // FIX: use remapped position (scene coords), not raw FALLBACK_PAPERS x/y/z
-      // Raw coords are UMAP values in [-5, 5] range — NOT scene positions.
-      // getRemappedPos returns the actual world position after _remapStars().
+      // FIX 2: use remapped scene position, not raw UMAP coords
       const pos = getRemappedPos(found.id);
-      if (pos) {
-        flyTo(pos);
-      }
+      if (pos) flyTo(pos);
     });
   });
 }
 
 function _hexToRgba(hex, alpha) {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
+  // Handle both '#rrggbb' strings and numeric hex values
+  let clean = typeof hex === 'number'
+    ? hex.toString(16).padStart(6, '0')
+    : hex.replace('#', '');
+  // Ensure 6 chars
+  if (clean.length === 3) clean = clean.split('').map(c => c+c).join('');
+  const r = parseInt(clean.slice(0, 2), 16) || 0;
+  const g = parseInt(clean.slice(2, 4), 16) || 0;
+  const b = parseInt(clean.slice(4, 6), 16) || 0;
   return `rgba(${r},${g},${b},${alpha})`;
 }

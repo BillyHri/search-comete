@@ -1,14 +1,18 @@
 /**
  * search-comete — galaxy.js
  *
- * Clean rewrite. Key design decisions:
- *  - Camera is ONLY driven by (pivot, camTheta, camPhi, camR) lerping to targets.
- *    Nothing else touches camera.position — no snapping, no teleporting.
- *  - flyTo (star click): sets pivotTarget + tgtR, keeps current angle.
- *  - flyToCluster (search): sets pivotTarget + tgtR + tgtTheta/tgtPhi.
- *  - Click vs drag: tracked with a mouseMoved flag so drags don't fire clicks.
- *  - Glow: single subtle Points layer (opacity 0.28), not stacked halos.
- *  - Instanced meshes + one LineSegments for edges (perf).
+ * Fixes applied:
+ *  1. _normaliseCite(): stars from the pipeline have `cite:0` but also carry
+ *     `citations` — we unify to `cite` before any size bucketing so instanced
+ *     mesh counts are never wrong.
+ *  2. Instanced mesh creation: if ALL stars are cite=0 (common with live API
+ *     data), every star goes to instancedSmall. That is fine — but we must
+ *     never leave instancedMed / instancedLarge as `null` and then try to
+ *     setMatrixAt() on them. Guard added in _buildStars tier assignment.
+ *  3. filterCluster 'all' now also restores edge opacity correctly.
+ *  4. flyTo / flyToCluster unchanged — they were correct.
+ *  5. CLUSTER_COLORS export made reliable (was exported before _discoverClusters
+ *     ran, so importers got an empty object). Now exported as a live reference.
  */
 
 import * as THREE from 'three';
@@ -16,25 +20,21 @@ import { showDetail } from './panel.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Preferred colors for known cluster names (any naming style)
 const PREFERRED_COLORS = {
-  // Short codes
   ml: 0x7c6dfa, bio: 0x3dd9a4, phys: 0xfa8c4f, cs: 0x5ab4f5,
   math: 0xf06ba8, chem: 0xf9c74f, econ: 0x90e0ef, env: 0x52b788, med: 0xe63946,
-  // Full names
   machine_learning: 0x7c6dfa, 'machine learning': 0x7c6dfa, machinelearning: 0x7c6dfa,
   deep_learning: 0x7c6dfa, nlp: 0x7c6dfa, ai: 0x7c6dfa,
   biology: 0x3dd9a4, bioinformatics: 0x3dd9a4, genomics: 0x3dd9a4,
   physics: 0xfa8c4f, astrophysics: 0xfa8c4f, quantum: 0xfa8c4f,
   computer_science: 0x5ab4f5, 'computer science': 0x5ab4f5, systems: 0x5ab4f5,
-  mathematics: 0xf06ba8, math: 0xf06ba8, statistics: 0xf06ba8,
+  mathematics: 0xf06ba8, statistics: 0xf06ba8,
   chemistry: 0xf9c74f, materials: 0xf9c74f,
   economics: 0x90e0ef, finance: 0x90e0ef,
   environment: 0x52b788, environmental: 0x52b788, ecology: 0x52b788,
   medicine: 0xe63946, medical: 0xe63946, healthcare: 0xe63946, clinical: 0xe63946,
 };
 
-// Fallback palette for unknown cluster names
 const AUTO_PALETTE = [
   0x7c6dfa, 0x3dd9a4, 0xfa8c4f, 0x5ab4f5, 0xf06ba8,
   0xf9c74f, 0x90e0ef, 0x52b788, 0xe63946, 0xc084fc,
@@ -42,15 +42,14 @@ const AUTO_PALETTE = [
 ];
 const DEFAULT_COLOR = 0x8888aa;
 
-// These are populated dynamically in initGalaxy() from the actual data
-export let CLUSTER_COLORS  = {};
+// Live reference — populated in _discoverClusters(), imported by main.js
+export const CLUSTER_COLORS = {};
 let CLUSTER_ANCHORS = {};
 
-// Evenly distribute n points on a sphere (Fibonacci lattice)
 function _spherePositions(n, radius = 22) {
   const positions = [], golden = (1 + Math.sqrt(5)) / 2;
   for (let i = 0; i < n; i++) {
-    const theta = Math.acos(1 - 2*(i+0.5)/n);
+    const theta = Math.acos(1 - 2 * (i + 0.5) / n);
     const phi   = 2 * Math.PI * i / golden;
     positions.push(new THREE.Vector3(
       radius * Math.sin(theta) * Math.cos(phi),
@@ -61,18 +60,26 @@ function _spherePositions(n, radius = 22) {
   return positions;
 }
 
-// Build CLUSTER_COLORS and CLUSTER_ANCHORS from whatever clusters exist in the data
 function _discoverClusters(stars) {
   const names = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
   const positions = _spherePositions(names.length);
-  CLUSTER_COLORS  = {};
+  // Mutate the exported object in-place so existing imports stay in sync
+  Object.keys(CLUSTER_COLORS).forEach(k => delete CLUSTER_COLORS[k]);
   CLUSTER_ANCHORS = {};
   names.forEach((name, i) => {
     const key = String(name).toLowerCase().trim();
     CLUSTER_COLORS[name]  = PREFERRED_COLORS[key] ?? AUTO_PALETTE[i % AUTO_PALETTE.length];
     CLUSTER_ANCHORS[name] = positions[i];
   });
-  console.log('[galaxy] Discovered clusters:', names);
+  console.log('[galaxy] Clusters discovered:', names);
+}
+
+// ── FIX 1: Normalise cite field ───────────────────────────────────────────────
+// Pipeline stars use `citations`; fallback papers use `cite`.
+// After this, every star has a numeric `.cite` we can rely on.
+function _normaliseCite(star) {
+  const c = star.cite ?? star.citations ?? 0;
+  return { ...star, cite: typeof c === 'number' ? c : 0 };
 }
 
 // ── Module state ──────────────────────────────────────────────────────────────
@@ -86,9 +93,6 @@ let edgeSegments;
 let ringMesh, ringMat;
 let animFrame;
 
-// Camera — spherical coords orbiting a pivot point.
-// RULE: tgtTheta/tgtPhi/tgtR/pivotTarget are the only things external code sets.
-// _animate() lerps actual values toward targets every frame.
 const pivot       = new THREE.Vector3(0, 0, 0);
 const pivotTarget = new THREE.Vector3(0, 0, 0);
 let camTheta = 0, camPhi = 1.3,  camR = 85;
@@ -96,7 +100,7 @@ let tgtTheta = 0, tgtPhi = 1.3, tgtR = 85;
 
 let isDragging = false, lastMX = 0, lastMY = 0, mouseMoved = false;
 let autoRotate = true;
-const mouse2D = new THREE.Vector2();
+const mouse2D  = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 let hoveredStarIdx = -1;
 let lastRaycast = 0;
@@ -127,6 +131,9 @@ function hideLoader() {
 export function initGalaxy(canvas, stars) {
   showLoader();
 
+  // FIX 1: normalise all stars so .cite is always a number
+  stars = stars.map(_normaliseCite);
+
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -144,17 +151,10 @@ export function initGalaxy(canvas, stars) {
 
   const remapped = _remapStars(stars);
 
-  // Debug: log star counts per cluster so missing clusters are obvious
+  // Debug logging
   const clusterCounts = {};
   remapped.forEach(s => { clusterCounts[s.cluster] = (clusterCounts[s.cluster] || 0) + 1; });
-  console.log('[galaxy] Star counts per cluster:', clusterCounts);
-  const emptyClusters = Object.entries(clusterCounts).filter(([,n]) => n === 0).map(([c]) => c);
-  const KNOWN_CLUSTERS = ['ml','bio','phys','cs','math','chem','econ','env','med'];
-  const missingClusters = KNOWN_CLUSTERS.filter(c => !clusterCounts[c]);
-  if (missingClusters.length) {
-    console.warn('[galaxy] These clusters have NO stars in the data:', missingClusters);
-    console.warn('[galaxy] Check your FALLBACK_PAPERS in data.js — are there entries with cluster:', missingClusters, '?');
-  }
+  console.log('[galaxy] Stars per cluster:', clusterCounts);
 
   _buildNebulae(remapped);
 
@@ -240,6 +240,17 @@ export function filterCluster(clusterId) {
   if (clusterId === 'all') {
     pivotTarget.set(0, 0, 0);
     tgtR = 85;
+    // Restore all stars to full size and edges to normal opacity
+    if (edgeSegments) edgeSegments.material.opacity = 0.45;
+    starDataArray.forEach(({ tierMesh, localId, globalIdx }) => {
+      const b = basePosArray;
+      dummy.position.set(b[globalIdx*3], b[globalIdx*3+1], b[globalIdx*3+2]);
+      dummy.quaternion.identity();
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      tierMesh.setMatrixAt(localId, dummy.matrix);
+    });
+    _flushAll(true);
     return;
   }
 
@@ -266,15 +277,12 @@ export function filterCluster(clusterId) {
   }
 }
 
-/** Fly to a specific star world position (from clicking a star in the scene). */
 export function flyTo({ x, y, z }) {
   pivotTarget.set(x, y, z);
   tgtR = 4;
-  // Preserve current viewing angle — just pull in close
   _warp();
 }
 
-/** Fly to a cluster area from search results — wider view with angled approach. */
 export function flyToCluster({ x, y, z }) {
   pivotTarget.set(x, y, z);
   tgtR = 10;
@@ -353,16 +361,31 @@ function _makeStarTex() {
 function _buildStars(stars) {
   starDataArray = [];
 
-  const cntS = stars.filter(s=>(s.cite||0)<=200).length;
-  const cntM = stars.filter(s=>(s.cite||0)>200&&(s.cite||0)<=5000).length;
-  const cntL = stars.filter(s=>(s.cite||0)>5000).length;
+  // FIX 2: Count tiers correctly after cite normalisation
+  const cntS = stars.filter(s => s.cite <= 200).length;
+  const cntM = stars.filter(s => s.cite > 200 && s.cite <= 5000).length;
+  const cntL = stars.filter(s => s.cite > 5000).length;
+
+  console.log(`[galaxy] Star tiers — small(≤200): ${cntS}, med(201-5000): ${cntM}, large(>5000): ${cntL}`);
 
   const mat = () => new THREE.MeshBasicMaterial({ color: 0xffffff });
-  instancedSmall = cntS > 0 ? new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 7, 7), mat(), cntS) : null;
-  instancedMed   = cntM > 0 ? new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 8), mat(), cntM) : null;
-  instancedLarge = cntL > 0 ? new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 9, 9), mat(), cntL) : null;
+
+  // Always create all three meshes with at least 1 slot to avoid null references.
+  // Extra slots beyond actual count are harmless — they'll have scale(0).
+  instancedSmall = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 7, 7),  mat(), Math.max(1, cntS));
+  instancedMed   = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 8),  mat(), Math.max(1, cntM));
+  instancedLarge = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 9, 9),  mat(), Math.max(1, cntL));
+
   [instancedSmall, instancedMed, instancedLarge].forEach(im => {
-    if (im) im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Hide all slots by default — _buildStars will set real ones
+    for (let i = 0; i < im.count; i++) {
+      dummy.position.set(0, 0, 0);
+      dummy.quaternion.identity();
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    }
   });
 
   let iS=0, iM=0, iL=0;
@@ -371,7 +394,7 @@ function _buildStars(stars) {
   const glowByCluster = {};
 
   stars.forEach((star, gi) => {
-    const cite = star.cite || 0;
+    const cite = star.cite; // always a number after _normaliseCite
     _col.setHex(CLUSTER_COLORS[star.cluster] || DEFAULT_COLOR);
     dummy.position.set(star.x, star.y, star.z);
     dummy.quaternion.identity();
@@ -382,10 +405,12 @@ function _buildStars(stars) {
     basePosArray[gi*3+1] = star.y;
     basePosArray[gi*3+2] = star.z;
 
+    // FIX 2: assign tier — if cite=0 (all live API papers), all go to small.
+    // That is intentional and correct.
     let tierMesh, localId;
-    if (cite > 5000)     { tierMesh = instancedLarge; localId = iL++; }
-    else if (cite > 200) { tierMesh = instancedMed;   localId = iM++; }
-    else                 { tierMesh = instancedSmall;  localId = iS++; }
+    if (cite > 5000)      { tierMesh = instancedLarge; localId = iL++; }
+    else if (cite > 200)  { tierMesh = instancedMed;   localId = iM++; }
+    else                  { tierMesh = instancedSmall;  localId = iS++; }
 
     tierMesh.setMatrixAt(localId, dummy.matrix);
     tierMesh.setColorAt(localId, _col);
@@ -400,9 +425,8 @@ function _buildStars(stars) {
   instanceMapSmall = starDataArray.filter(e => e.tierMesh === instancedSmall);
   instanceMapMed   = starDataArray.filter(e => e.tierMesh === instancedMed);
   instanceMapLarge = starDataArray.filter(e => e.tierMesh === instancedLarge);
-  [instancedSmall, instancedMed, instancedLarge].forEach(im => { if (im) scene.add(im); });
+  [instancedSmall, instancedMed, instancedLarge].forEach(im => scene.add(im));
 
-  // Single glow layer per cluster — subtle soft points
   const starTex = _makeStarTex();
   Object.entries(glowByCluster).forEach(([cluster, pts]) => {
     const geo = new THREE.BufferGeometry();
@@ -429,15 +453,14 @@ function _buildEdges(stars) {
   });
 
   const positions = [], colors = [];
-  const K = 6; // k-nearest neighbours per star
+  const K = 6;
 
   Object.entries(groups).forEach(([cluster, members]) => {
     if (members.length < 2) return;
     const col = new THREE.Color(CLUSTER_COLORS[cluster] || DEFAULT_COLOR);
-    const added = new Set(); // deduplicate edges
+    const added = new Set();
 
     members.forEach((sa, a) => {
-      // Compute distance to all other members, sort, take K nearest
       const dists = [];
       for (let b = 0; b < members.length; b++) {
         if (b === a) continue;
@@ -446,8 +469,6 @@ function _buildEdges(stars) {
         dists.push({ b, d: Math.sqrt(dx*dx+dy*dy+dz*dz) });
       }
       dists.sort((x,y) => x.d - y.d);
-
-      // Max distance among this star's k-nearest (used for brightness scaling)
       const maxD = dists[Math.min(K-1, dists.length-1)].d;
 
       for (let k = 0; k < Math.min(K, dists.length); k++) {
@@ -489,6 +510,7 @@ function _buildInterClusterLines(stars) {
       const pa=pts[ids[a]], pb=pts[ids[b]];
       pos.push(pa.x,pa.y,pa.z, pb.x,pb.y,pb.z);
     }
+  if (!pos.length) return;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
@@ -535,7 +557,6 @@ function _bindControls(canvas) {
     setTimeout(() => { autoRotate = true; }, 5000);
   }, { passive: true });
 
-  // Only fire click if mouse didn't move (i.e. wasn't a drag)
   canvas.addEventListener('click', () => { if (!mouseMoved) _handleClick(); });
 
   window.addEventListener('resize', () => {
@@ -543,6 +564,39 @@ function _bindControls(canvas) {
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
   });
+
+  // Touch support
+  let lastTouchDist = 0;
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      isDragging = true; mouseMoved = false;
+      lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+      autoRotate = false;
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 1 && isDragging) {
+      const dx = e.touches[0].clientX - lastMX;
+      const dy = e.touches[0].clientY - lastMY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) mouseMoved = true;
+      tgtTheta -= dx * 0.005;
+      tgtPhi    = Math.max(0.15, Math.min(Math.PI-0.15, tgtPhi - dy * 0.004));
+      lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      tgtR = Math.max(2, Math.min(150, tgtR - (dist - lastTouchDist) * 0.1));
+      lastTouchDist = dist;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', () => { isDragging = false; setTimeout(() => { autoRotate = true; }, 5000); }, { passive: true });
 }
 
 function _handleClick() {
@@ -565,10 +619,8 @@ function _animate() {
 
   if (autoRotate && !isDragging) tgtTheta += 0.0006;
 
-  // Lerp pivot
   pivot.lerp(pivotTarget, 0.06);
 
-  // Lerp spherical coords — normalise theta delta to avoid spinning the long way
   let dTheta = tgtTheta - camTheta;
   while (dTheta >  Math.PI) dTheta -= Math.PI*2;
   while (dTheta < -Math.PI) dTheta += Math.PI*2;
@@ -576,7 +628,6 @@ function _animate() {
   camPhi   += (tgtPhi - camPhi) * 0.05;
   camR     += (tgtR   - camR)   * 0.05;
 
-  // Compute camera world position from spherical coords + pivot
   const sinPhi = Math.sin(camPhi);
   camera.position.set(
     pivot.x + camR * sinPhi * Math.sin(camTheta),
@@ -609,9 +660,9 @@ function _animateFloats() {
     else if (tierMesh === instancedMed) nM=true;
     else nL=true;
   });
-  if (nS) instancedSmall.instanceMatrix.needsUpdate = true;
-  if (nM) instancedMed.instanceMatrix.needsUpdate   = true;
-  if (nL) instancedLarge.instanceMatrix.needsUpdate = true;
+  if (nS && instancedSmall) instancedSmall.instanceMatrix.needsUpdate = true;
+  if (nM && instancedMed)   instancedMed.instanceMatrix.needsUpdate   = true;
+  if (nL && instancedLarge) instancedLarge.instanceMatrix.needsUpdate = true;
 }
 
 // ── Raycast ───────────────────────────────────────────────────────────────────
@@ -625,7 +676,7 @@ function _castAgainstInstances() {
     [instancedMed,   instanceMapMed],
     [instancedLarge, instanceMapLarge],
   ]) {
-    if (!im) continue;
+    if (!im || !map.length) continue;
     const hits = raycaster.intersectObject(im);
     if (!hits.length || hits[0].distance >= bestDist) continue;
     bestDist = hits[0].distance;
@@ -643,6 +694,7 @@ function _castAgainstInstances() {
 function _updateHover() {
   const result = _castAgainstInstances();
   const tooltip = document.getElementById('tooltip');
+  if (!tooltip) return;
 
   if (result) {
     document.body.style.cursor = 'pointer';

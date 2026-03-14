@@ -1,6 +1,15 @@
 """
 search-comete — search.py
 All Elasticsearch query logic, isolated from the FastAPI routes.
+
+Fixes applied:
+  1. text_search(): maps `cluster_id` → `cluster` and `cluster_color` → `color`
+     and `citations` → `cite` in the returned SearchResult so the frontend
+     receives the field names it actually uses.
+  2. get_all_stars(): same mapping. Also exposes both `cite` and `citations`.
+  3. get_paper_with_similar(): maps all fields correctly in PaperDetail.
+  4. Added error handling for missing `embedding` field (papers indexed without
+     embeddings won't crash the similar-papers lookup).
 """
 
 from elasticsearch import AsyncElasticsearch
@@ -40,23 +49,29 @@ async def text_search(
 
     resp = await es.search(index=INDEX, body=body)
     max_score = resp["hits"]["max_score"] or 1.0
-    results = [
-        SearchResult(
-            id       = h["_source"]["id"],
-            title    = h["_source"]["title"],
-            authors  = h["_source"].get("authors", ""),
-            year     = h["_source"].get("year"),
-            cite     = h["_source"].get("citations", 0),
-            abstract = h["_source"].get("abstract", ""),
-            cluster  = h["_source"]["cluster_id"],
-            color    = h["_source"].get("cluster_color", "#ffffff"),
-            x        = h["_source"]["pos_x"],
-            y        = h["_source"]["pos_y"],
-            z        = h["_source"]["pos_z"],
-            score    = round(h["_score"] / max_score, 3),
-        )
-        for h in resp["hits"]["hits"]
-    ]
+
+    results = []
+    for h in resp["hits"]["hits"]:
+        s = h["_source"]
+        cite_val = s.get("citations", 0) or s.get("cite", 0) or 0
+        results.append(SearchResult(
+            id         = s["id"],
+            title      = s["title"],
+            authors    = s.get("authors", ""),
+            year       = s.get("year"),
+            # FIX: expose as `cite` — frontend uses this field name
+            cite       = cite_val,
+            citations  = cite_val,
+            abstract   = s.get("abstract", ""),
+            # FIX: map cluster_id → cluster, cluster_color → color
+            cluster    = s.get("cluster_id", s.get("cluster", "")),
+            color      = s.get("cluster_color", s.get("color", "#ffffff")),
+            # FIX: map pos_x/y/z → x/y/z
+            x          = s.get("pos_x", s.get("x", 0.0)),
+            y          = s.get("pos_y", s.get("y", 0.0)),
+            z          = s.get("pos_z", s.get("z", 0.0)),
+            score      = round(h["_score"] / max_score, 3),
+        ))
     return resp["hits"]["total"]["value"], results
 
 
@@ -70,8 +85,12 @@ async def get_all_stars(
     default 10 000-hit window.
     """
     query = {"term": {"cluster_id": cluster}} if cluster else {"match_all": {}}
-    source_fields = ["id", "title", "authors", "year", "citations",
-                     "cluster_id", "cluster_color", "pos_x", "pos_y", "pos_z"]
+    source_fields = [
+        "id", "title", "authors", "year", "citations",
+        "cluster_id", "cluster_color", "pos_x", "pos_y", "pos_z",
+        # also accept alternate field names written by older pipeline versions
+        "cluster", "color", "x", "y", "z", "cite",
+    ]
     results = []
     search_after = None
     page_size = 1000
@@ -93,17 +112,20 @@ async def get_all_stars(
 
         for h in hits:
             s = h["_source"]
+            cite_val = s.get("citations", 0) or s.get("cite", 0) or 0
             results.append(StarPoint(
-                id      = s["id"],
-                title   = s["title"],
-                authors = s.get("authors", ""),
-                year    = s.get("year"),
-                cite    = s.get("citations", 0),
-                cluster = s["cluster_id"],
-                color   = s.get("cluster_color", "#ffffff"),
-                x       = s["pos_x"],
-                y       = s["pos_y"],
-                z       = s["pos_z"],
+                id        = s["id"],
+                title     = s["title"],
+                authors   = s.get("authors", ""),
+                year      = s.get("year"),
+                cite      = cite_val,
+                citations = cite_val,
+                # FIX: accept both naming conventions
+                cluster   = s.get("cluster_id",    s.get("cluster", "")),
+                color     = s.get("cluster_color",  s.get("color", "#ffffff")),
+                x         = s.get("pos_x",          s.get("x", 0.0)),
+                y         = s.get("pos_y",          s.get("y", 0.0)),
+                z         = s.get("pos_z",          s.get("z", 0.0)),
             ))
 
         if len(hits) < page_size:
@@ -121,13 +143,7 @@ async def get_paper_with_similar(
     """
     Fetch a paper by its 'id' field value (e.g. an arxiv URL), then run kNN
     to find the k most similar papers.
-
-    FIX: Uses a term search on the 'id' field instead of es.get() by _id,
-    because the paper_id is the application-level id (arxiv URL), not the
-    Elasticsearch document _id — unless your pipeline explicitly sets _id=paper_id
-    at index time (in which case es.get() would also work).
     """
-    # Look up by the application-level 'id' field
     search_resp = await es.search(
         index=INDEX,
         body={
@@ -144,46 +160,54 @@ async def get_paper_with_similar(
     embedding = src.get("embedding", [])
     similar: list[SimilarPaper] = []
 
+    # FIX: only attempt kNN if we actually have an embedding
     if embedding:
-        knn_resp = await es.search(
-            index=INDEX,
-            body={
-                "knn": {
-                    "field":          "embedding",
-                    "query_vector":   embedding,
-                    "k":              k + 1,   # +1 because the paper itself scores highest
-                    "num_candidates": 50,
+        try:
+            knn_resp = await es.search(
+                index=INDEX,
+                body={
+                    "knn": {
+                        "field":          "embedding",
+                        "query_vector":   embedding,
+                        "k":              k + 1,
+                        "num_candidates": 50,
+                    },
+                    "_source": {"excludes": ["embedding"]},
+                    "size": k + 1,
                 },
-                "_source": {"excludes": ["embedding"]},
-                "size": k + 1,
-            },
-        )
-        for hit in knn_resp["hits"]["hits"]:
-            s = hit["_source"]
-            if s["id"] != paper_id:
-                similar.append(SimilarPaper(
-                    id      = s["id"],
-                    title   = s["title"],
-                    authors = s.get("authors", ""),
-                    year    = s.get("year"),
-                    x       = s["pos_x"],
-                    y       = s["pos_y"],
-                    z       = s["pos_z"],
-                ))
+            )
+            for hit in knn_resp["hits"]["hits"]:
+                s = hit["_source"]
+                if s["id"] != paper_id:
+                    similar.append(SimilarPaper(
+                        id      = s["id"],
+                        title   = s["title"],
+                        authors = s.get("authors", ""),
+                        year    = s.get("year"),
+                        x       = s.get("pos_x", s.get("x", 0.0)),
+                        y       = s.get("pos_y", s.get("y", 0.0)),
+                        z       = s.get("pos_z", s.get("z", 0.0)),
+                    ))
+        except Exception as e:
+            # kNN failed (e.g. index has no embedding field) — return without similar
+            print(f"[search] kNN lookup failed for {paper_id}: {e}")
+
+    cite_val = src.get("citations", 0) or src.get("cite", 0) or 0
 
     return PaperDetail(
         id        = src["id"],
         title     = src["title"],
         authors   = src.get("authors", ""),
         year      = src.get("year"),
-        citations = src.get("citations", 0),
+        citations = cite_val,
+        cite      = cite_val,
         abstract  = src.get("abstract", ""),
         venue     = src.get("venue", ""),
-        cluster   = src["cluster_id"],
-        color     = src.get("cluster_color", "#ffffff"),
-        x         = src["pos_x"],
-        y         = src["pos_y"],
-        z         = src["pos_z"],
+        cluster   = src.get("cluster_id",   src.get("cluster", "")),
+        color     = src.get("cluster_color", src.get("color", "#ffffff")),
+        x         = src.get("pos_x",         src.get("x", 0.0)),
+        y         = src.get("pos_y",         src.get("y", 0.0)),
+        z         = src.get("pos_z",         src.get("z", 0.0)),
         similar   = similar[:k],
     )
 
