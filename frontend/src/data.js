@@ -1,0 +1,125 @@
+/**
+ * search-comete — data.js
+ * Bundled fallback paper data used when the backend is not running.
+ * Replace with a fetch('/api/stars') call once your pipeline has run.
+ *
+ * x / y / z coords are hand-placed for the fallback view.
+ * The real pipeline (pipeline/run.py) generates these via UMAP.
+ */
+
+export const FALLBACK_PAPERS = [
+  // ── Machine Learning ────────────────────────────────────────────────────────
+  { id:1,  cluster:'ml',   color:'#7c6dfa', title:'Attention Is All You Need', authors:'Vaswani, Shazeer, Parmar et al.', year:2017, cite:90421, abstract:'We propose the Transformer, a model architecture based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.', keywords:['attention','transformer','translation','neural'], x:-2.5, y:0.8, z:-1.5 },
+  { id:2,  cluster:'ml',   color:'#7c6dfa', title:'BERT: Pre-training of Deep Bidirectional Transformers', authors:'Devlin, Chang, Lee, Toutanova', year:2019, cite:72000, abstract:'We introduce BERT, designed to pre-train deep bidirectional representations from unlabeled text by jointly conditioning on both left and right context.', keywords:['bert','language model','pretraining','nlp'], x:-2.1, y:1.2, z:-0.8 },
+  { id:3,  cluster:'ml',   color:'#7c6dfa', title:'Language Models are Few-Shot Learners', authors:'Brown et al. (OpenAI)', year:2020, cite:41000, abstract:'We demonstrate that scaling language models greatly improves task-agnostic few-shot performance. GPT-3 has 175 billion parameters.', keywords:['gpt','few-shot','scaling','language model'], x:-3.0, y:0.4, z:-1.9 },
+  { id:4,  cluster:'ml',   color:'#7c6dfa', title:'Deep Residual Learning for Image Recognition', authors:'He, Zhang, Ren, Sun', year:2016, cite:120000, abstract:'We present a residual learning framework to ease the training of networks substantially deeper than those used previously.', keywords:['resnet','residual','image recognition','deep learning'], x:-2.8, y:1.5, z:-2.2 },
+  { id:5,  cluster:'ml',   color:'#7c6dfa', title:'Generative Adversarial Networks', authors:'Goodfellow et al.', year:2014, cite:52000, abstract:'We propose a new framework for estimating generative models via an adversarial process — a generator and a discriminator trained simultaneously.', keywords:['gan','generative','adversarial','deep learning'], x:-1.8, y:0.2, z:-2.5 },
+  { id:6,  cluster:'ml',   color:'#7c6dfa', title:'Denoising Diffusion Probabilistic Models', authors:'Ho, Jain, Abbeel', year:2020, cite:12000, abstract:'We present high quality image synthesis results using diffusion probabilistic models inspired by nonequilibrium thermodynamics.', keywords:['diffusion','generative','image synthesis'], x:-3.2, y:1.0, z:-0.5 },
+  { id:7,  cluster:'ml',   color:'#7c6dfa', title:'Proximal Policy Optimization Algorithms', authors:'Schulman et al. (OpenAI)', year:2017, cite:11000, abstract:'We propose a new family of policy gradient methods alternating between sampling data and optimizing a surrogate objective.', keywords:['reinforcement learning','ppo','policy gradient','reward'], x:-1.6, y:1.8, z:-1.2 },
+  { id:8,  cluster:'ml',   color:'#7c6dfa', title:'Retrieval-Augmented Generation for Knowledge-Intensive NLP', authors:'Lewis et al. (Facebook AI)', year:2020, cite:5800, abstract:'We explore RAG — models combining pre-trained parametric and non-parametric memory for language generation.', keywords:['rag','retrieval','generation','knowledge'], x:-2.2, y:0.6, z:-2.8 },
+  { id:9,  cluster:'ml',   color:'#7c6dfa', title:'Scaling Laws for Neural Language Models', authors:'Kaplan et al. (OpenAI)', year:2020, cite:3900, abstract:'We study empirical scaling laws for language model performance. Loss scales as a power-law with model size, dataset size, and compute.', keywords:['scaling','neural','language model','compute'], x:-3.5, y:0.9, z:-1.4 },
+  { id:10, cluster:'ml',   color:'#7c6dfa', title:'LoRA: Low-Rank Adaptation of Large Language Models', authors:'Hu et al. (Microsoft)', year:2022, cite:7200, abstract:'LoRA freezes pre-trained model weights and injects trainable rank decomposition matrices into each Transformer layer.', keywords:['lora','fine-tuning','adaptation','efficient'], x:-1.9, y:1.4, z:-0.6 },
+
+  // ── Biology ─────────────────────────────────────────────────────────────────
+  { id:11, cluster:'bio',  color:'#3dd9a4', title:'A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity', authors:'Jinek, Chylinski, Fonfara et al.', year:2012, cite:24000, abstract:'We describe CRISPR-Cas9 as a dual-RNA-guided DNA endonuclease with programmable capacity for targeted genome editing.', keywords:['crispr','cas9','gene editing','genome'], x:2.8, y:-0.5, z:1.0 },
+  { id:12, cluster:'bio',  color:'#3dd9a4', title:'Highly accurate protein structure prediction with AlphaFold', authors:'Jumper et al. (DeepMind)', year:2021, cite:18000, abstract:'AlphaFold predicts protein structures with atomic accuracy even when no similar structure is known, using a novel ML approach.', keywords:['protein folding','alphafold','structure prediction','deep learning'], x:3.2, y:-0.1, z:1.5 },
+  { id:13, cluster:'bio',  color:'#3dd9a4', title:'An Integrated Encyclopedia of DNA Elements in the Human Genome', authors:'ENCODE Consortium', year:2012, cite:19000, abstract:'ENCODE systematically maps regions of transcription, transcription factor association, chromatin structure, and histone modification.', keywords:['encode','genome','dna','regulatory elements'], x:2.4, y:-1.0, z:0.6 },
+  { id:14, cluster:'bio',  color:'#3dd9a4', title:'Single-cell transcriptomic analysis of cardiac differentiation', authors:'Churko et al.', year:2018, cite:420, abstract:'We use single-cell RNA sequencing to profile the transcriptome of individual cardiac progenitor cells at multiple stages of differentiation.', keywords:['single-cell','transcriptomics','cardiac','rna-seq'], x:3.6, y:-0.8, z:1.8 },
+  { id:15, cluster:'bio',  color:'#3dd9a4', title:'The Hallmarks of Cancer', authors:'Hanahan, Weinberg', year:2000, cite:65000, abstract:'Six hallmarks comprise principles providing a logical framework for understanding the diversity of neoplastic diseases.', keywords:['cancer','hallmarks','oncology','tumor'], x:2.2, y:0.4, z:1.2 },
+  { id:16, cluster:'bio',  color:'#3dd9a4', title:'Gut Microbiota in Health and Disease', authors:'Marchesi et al.', year:2016, cite:3800, abstract:'Our review highlights emerging links between gut microbiota composition and metabolic disorders, autoimmune conditions, and mental health.', keywords:['microbiome','gut','health','bacteria'], x:3.0, y:-1.3, z:0.4 },
+
+  // ── Physics ──────────────────────────────────────────────────────────────────
+  { id:17, cluster:'phys', color:'#fa8c4f', title:'Observation of Gravitational Waves from a Binary Black Hole Merger', authors:'Abbott et al. (LIGO)', year:2016, cite:24000, abstract:'On September 14, 2015, the LIGO detectors simultaneously observed transient gravitational-wave signal GW150914.', keywords:['gravitational waves','black holes','ligo','general relativity'], x:-0.5, y:-2.2, z:-2.8 },
+  { id:18, cluster:'phys', color:'#fa8c4f', title:'First M87 Event Horizon Telescope Results', authors:'Event Horizon Telescope Collaboration', year:2019, cite:6000, abstract:'We present the first EHT images of M87 revealing the shadow of its central supermassive black hole.', keywords:['black hole','event horizon','eht','m87'], x:-1.0, y:-2.6, z:-2.2 },
+  { id:19, cluster:'phys', color:'#fa8c4f', title:'Quantum Supremacy Using a Programmable Superconducting Processor', authors:'Arute et al. (Google)', year:2019, cite:4800, abstract:'We report use of a processor with 53 programmable superconducting qubits to create quantum states, demonstrating quantum supremacy.', keywords:['quantum computing','superconducting','qubits','supremacy'], x:0.2, y:-1.8, z:-3.2 },
+  { id:20, cluster:'phys', color:'#fa8c4f', title:'High-Temperature Superconductivity in Bilayer Graphene', authors:'Cao et al. (MIT)', year:2018, cite:5600, abstract:'When two graphene sheets are twisted by the magic angle, flat bands emerge giving rise to correlated insulating and superconducting states.', keywords:['superconductivity','graphene','magic angle','twistronics'], x:-0.8, y:-2.0, z:-3.5 },
+  { id:21, cluster:'phys', color:'#fa8c4f', title:'Higgs Boson Discovery at the LHC', authors:'ATLAS and CMS Collaborations', year:2012, cite:12000, abstract:'We report observation of a new boson at 125 GeV with statistical significance of 5.0 standard deviations.', keywords:['higgs boson','lhc','particle physics','standard model'], x:0.4, y:-2.8, z:-2.0 },
+  { id:22, cluster:'phys', color:'#fa8c4f', title:'Dark Energy and the Accelerating Universe', authors:'Perlmutter, Riess et al.', year:1999, cite:16000, abstract:'Using 42 high-redshift supernovae we find evidence for a positive cosmological constant — the expansion of the universe is accelerating.', keywords:['dark energy','cosmology','supernova','universe'], x:-1.4, y:-2.4, z:-1.6 },
+
+  // ── Computer Science ──────────────────────────────────────────────────────────
+  { id:23, cluster:'cs',   color:'#5ab4f5', title:'MapReduce: Simplified Data Processing on Large Clusters', authors:'Dean, Ghemawat (Google)', year:2004, cite:21000, abstract:'MapReduce is a programming model for processing large data sets with a parallel, distributed algorithm on a cluster.', keywords:['mapreduce','distributed','big data','google'], x:1.8, y:2.0, z:-0.8 },
+  { id:24, cluster:'cs',   color:'#5ab4f5', title:'Bitcoin: A Peer-to-Peer Electronic Cash System', authors:'Nakamoto, S.', year:2008, cite:28000, abstract:'A purely peer-to-peer version of electronic cash would allow online payments without going through a financial institution.', keywords:['bitcoin','blockchain','cryptocurrency','peer-to-peer'], x:2.4, y:2.4, z:-1.2 },
+  { id:25, cluster:'cs',   color:'#5ab4f5', title:'Dynamo: Amazon\'s Highly Available Key-value Store', authors:'DeCandia et al. (Amazon)', year:2007, cite:6800, abstract:'Dynamo is a highly available key-value storage system that sacrifices consistency under certain failure scenarios.', keywords:['dynamo','distributed systems','key-value','consistency'], x:1.2, y:1.6, z:-1.5 },
+  { id:26, cluster:'cs',   color:'#5ab4f5', title:'The PageRank Citation Ranking: Bringing Order to the Web', authors:'Page, Brin, Motwani, Winograd', year:1999, cite:20000, abstract:'PageRank rates Web pages objectively based on the link structure, using the recursive idea that important pages are linked to by important pages.', keywords:['pagerank','google','web graph','ranking'], x:2.2, y:2.8, z:-0.4 },
+  { id:27, cluster:'cs',   color:'#5ab4f5', title:'Mamba: Linear-Time Sequence Modeling with Selective State Spaces', authors:'Gu, Dao', year:2023, cite:2100, abstract:'We propose Mamba, an alternative to the Transformer architecture with linear time complexity in sequence length.', keywords:['mamba','state space','sequence modeling','efficient'], x:1.5, y:1.2, z:-2.0 },
+
+  // ── Mathematics ──────────────────────────────────────────────────────────────
+  { id:28, cluster:'math', color:'#f06ba8', title:'On the Riemann Hypothesis and Prime Distribution', authors:'Various authors', year:2022, cite:340, abstract:'This survey reviews recent progress on bounds for zero-free regions and connections to the distribution of prime numbers.', keywords:['riemann hypothesis','prime numbers','zeta function','analytic number theory'], x:-1.2, y:-1.0, z:2.5 },
+  { id:29, cluster:'math', color:'#f06ba8', title:'Perelman\'s Proof of the Poincaré Conjecture', authors:'Perelman, G.', year:2003, cite:3200, abstract:'We prove the Geometrization Conjecture using Ricci flow with surgery, implying the Poincaré Conjecture as a special case.', keywords:['poincare conjecture','ricci flow','topology','three-manifolds'], x:-1.8, y:-1.5, z:3.0 },
+  { id:30, cluster:'math', color:'#f06ba8', title:'Optimal Transport and Wasserstein Distances', authors:'Villani, C.', year:2003, cite:8900, abstract:'We study the Monge-Kantorovich mass transport problem and develop Wasserstein distances fundamental to machine learning.', keywords:['optimal transport','wasserstein','measure theory','geometry'], x:-0.6, y:-0.5, z:2.2 },
+  { id:31, cluster:'math', color:'#f06ba8', title:'A Survey of Topological Data Analysis', authors:'Carlsson, G.', year:2009, cite:4200, abstract:'Persistent homology provides a robust way to extract topological features from data at multiple scales.', keywords:['topology','persistent homology','tda','data analysis'], x:-1.5, y:-0.8, z:1.8 },
+];
+
+// Maps keyword tokens → paper IDs for local fuzzy search
+export const KEYWORD_MAP = {
+  'attention':             [1, 2, 10],
+  'transformer':           [1, 2, 3, 10, 27],
+  'bert':                  [2],
+  'gpt':                   [3],
+  'few-shot':              [3],
+  'deep learning':         [4, 5, 6, 12],
+  'neural':                [4, 5, 9],
+  'image':                 [4, 6],
+  'gan':                   [5],
+  'generative':            [5, 6],
+  'diffusion':             [6],
+  'reinforcement':         [7],
+  'reward':                [7],
+  'policy':                [7],
+  'rag':                   [8],
+  'retrieval':             [8],
+  'scaling':               [3, 9],
+  'lora':                  [10],
+  'fine-tuning':           [10],
+  'adaptation':            [10],
+  'crispr':                [11],
+  'gene':                  [11, 13],
+  'genome':                [11, 13],
+  'protein':               [12],
+  'folding':               [12],
+  'alphafold':             [12],
+  'single-cell':           [14],
+  'rna':                   [14],
+  'cancer':                [15],
+  'tumor':                 [15],
+  'microbiome':            [16],
+  'gut':                   [16],
+  'bacteria':              [16],
+  'gravitational':         [17],
+  'gravitational waves':   [17],
+  'black hole':            [17, 18],
+  'black holes':           [17, 18],
+  'ligo':                  [17],
+  'event horizon':         [18],
+  'quantum':               [19, 20],
+  'qubit':                 [19],
+  'superconducting':       [19, 20],
+  'graphene':              [20],
+  'magic angle':           [20],
+  'higgs':                 [21],
+  'particle':              [21],
+  'dark energy':           [22],
+  'cosmology':             [22],
+  'distributed':           [23, 25],
+  'mapreduce':             [23],
+  'bitcoin':               [24],
+  'blockchain':            [24],
+  'dynamo':                [25],
+  'pagerank':              [26],
+  'ranking':               [26],
+  'mamba':                 [27],
+  'sequence':              [27],
+  'riemann':               [28],
+  'prime':                 [28],
+  'poincare':              [29],
+  'topology':              [29, 31],
+  'ricci':                 [29],
+  'wasserstein':           [30],
+  'optimal transport':     [30],
+  'tda':                   [31],
+  'persistent homology':   [31],
+  'language model':        [2, 3, 8, 9],
+  'nlp':                   [2, 8],
+  'llm':                   [3, 9, 10],
+  'compute':               [9],
+};

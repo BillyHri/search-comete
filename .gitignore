@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Build outputs
+frontend/dist/
+
+# Environment
+.env
+
+# Pipeline cache (large files — don't commit)
+pipeline/.cache/
+pipeline/stars.json
+
+# Elasticsearch data
+es-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log

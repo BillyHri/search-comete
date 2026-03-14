@@ -1,0 +1,92 @@
+/**
+ * search-comete — search.js
+ * Handles search queries. Tries the FastAPI backend first;
+ * falls back to local keyword matching against bundled data.
+ */
+
+import { FALLBACK_PAPERS, KEYWORD_MAP } from './data.js';
+
+const API_BASE = '/api';
+let _usingBackend = null;  // null = unknown, true/false after first check
+
+/**
+ * Main search entry point.
+ * Returns an array of paper objects with a `score` field added.
+ */
+export async function doSearch(query) {
+  if (_usingBackend === null) {
+    _usingBackend = await _checkBackend();
+  }
+
+  if (_usingBackend) {
+    try {
+      return await _remoteSearch(query);
+    } catch {
+      console.warn('[search] Backend failed, falling back to local search');
+      _usingBackend = false;
+    }
+  }
+
+  return _localSearch(query);
+}
+
+// ── Remote search (FastAPI → Elasticsearch) ────────────────────────────────
+async function _remoteSearch(query) {
+  const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&size=20`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.results || []).map(r => ({ ...r, score: r.score ?? 0.5 }));
+}
+
+async function _checkBackend() {
+  try {
+    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ── Local keyword search (works with no backend) ───────────────────────────
+function _localSearch(query) {
+  const q      = query.toLowerCase();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const scores = {};
+
+  FALLBACK_PAPERS.forEach(p => { scores[p.id] = 0; });
+
+  // Score via keyword map
+  Object.entries(KEYWORD_MAP).forEach(([kw, ids]) => {
+    if (tokens.some(tok => kw.includes(tok) || tok.includes(kw))) {
+      ids.forEach(id => { scores[id] = (scores[id] || 0) + 2; });
+    }
+  });
+
+  // Score via paper's own keywords / title
+  FALLBACK_PAPERS.forEach(p => {
+    tokens.forEach(tok => {
+      if ((p.title || '').toLowerCase().includes(tok))    scores[p.id] += 2;
+      if ((p.abstract || '').toLowerCase().includes(tok)) scores[p.id] += 0.5;
+      (p.keywords || []).forEach(kw => {
+        if (kw.includes(tok) || tok.includes(kw)) scores[p.id] += 1;
+      });
+    });
+  });
+
+  const results = FALLBACK_PAPERS
+    .filter(p => scores[p.id] > 0)
+    .sort((a, b) => scores[b.id] - scores[a.id])
+    .map(p => ({
+      ...p,
+      score: Math.min(0.99, scores[p.id] / 6),
+    }));
+
+  // If nothing matched, return a small random selection
+  if (!results.length) {
+    return FALLBACK_PAPERS.slice(0, 5).map(p => ({ ...p, score: Math.random() * 0.2 + 0.1 }));
+  }
+
+  return results;
+}
