@@ -15,7 +15,7 @@
 
 import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos, CLUSTER_COLORS } from './galaxy.js';
 import { doSearch, setSearchCorpus } from './search.js';
-import { showDetail, closeDetail } from './panel.js';
+import { showDetail, closeDetail, setCorpus } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
 
 // ── Inject UI HTML ────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ async function loadStars() {
   // Vite serves frontend/public/ at /, so this resolves to frontend/public/stars.json
   try {
     console.log('② Trying /stars.json …');
-    const res = await fetch('/stars.json', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`/stars.json?t=${Date.now()}`, { signal: AbortSignal.timeout(5000) });
     console.log('  /stars.json HTTP', res.status, res.ok ? 'OK' : 'FAIL');
     if (res.ok) {
       const data = await res.json();
@@ -464,8 +464,9 @@ loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
 
-  // Give the corpus to search.js so it can build its inverted index
+  // Give the corpus to both search.js and panel.js
   setSearchCorpus(stars);
+  setCorpus(stars);
 
   // Rebuild legend after initGalaxy so CLUSTER_COLORS is populated
   requestAnimationFrame(() => _buildLegend(stars));
