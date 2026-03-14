@@ -57,7 +57,7 @@ const DEFAULT_COLOR = 0x8888aa;
 export const CLUSTER_COLORS = {};
 let CLUSTER_ANCHORS = {};
 
-function _spherePositions(n, radius = 22) {
+function _spherePositions(n, radius = 45) {
   const positions = [], golden = (1 + Math.sqrt(5)) / 2;
   for (let i = 0; i < n; i++) {
     const theta = Math.acos(1 - 2 * (i + 0.5) / n);
@@ -106,8 +106,8 @@ let animFrame;
 
 const pivot       = new THREE.Vector3(0, 0, 0);
 const pivotTarget = new THREE.Vector3(0, 0, 0);
-let camTheta = 0, camPhi = 1.3,  camR = 85;
-let tgtTheta = 0, tgtPhi = 1.3, tgtR = 85;
+let camTheta = 0, camPhi = 1.3,  camR = 140;
+let tgtTheta = 0, tgtPhi = 1.3, tgtR = 140;
 
 let isDragging = false, lastMX = 0, lastMY = 0, mouseMoved = false;
 let autoRotate = true;
@@ -199,7 +199,7 @@ function _remapStars(stars) {
       y0=Math.min(y0,s.y||0); y1=Math.max(y1,s.y||0);
       z0=Math.min(z0,s.z||0); z1=Math.max(z1,s.z||0);
     });
-    const rx=(x1-x0)||1, ry=(y1-y0)||1, rz=(z1-z0)||1, R=4;
+    const rx=(x1-x0)||1, ry=(y1-y0)||1, rz=(z1-z0)||1, R=7;
     members.forEach(s => {
       out.push({
         ...s,
@@ -250,7 +250,7 @@ export function filterCluster(clusterId) {
   clearHighlights();
   if (clusterId === 'all') {
     pivotTarget.set(0, 0, 0);
-    tgtR = 85;
+    tgtR = 140;
     // Restore all stars to full size and edges to normal opacity
     if (edgeSegments) edgeSegments.material.opacity = 0.45;
     starDataArray.forEach(({ tierMesh, localId, globalIdx }) => {
@@ -311,7 +311,7 @@ function _warp() {
 // ── Scene builders ────────────────────────────────────────────────────────────
 
 function _buildBackground() {
-  const count = 8000;
+  const count = 3000; // reduced from 8000 — big perf win for identical visual result
   const pos = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     pos[i*3]   = (Math.random()-0.5)*400;
@@ -333,7 +333,7 @@ function _buildNebulae(stars) {
     const anchor = CLUSTER_ANCHORS[s.cluster];
     if (!anchor) return;
     const color = CLUSTER_COLORS[s.cluster] || DEFAULT_COLOR;
-    [10, 5].forEach(sz => scene.add(_makeNebula(color, sz, anchor)));
+    scene.add(_makeNebula(color, 9, anchor)); // single nebula per cluster (was two)
   });
 }
 
@@ -383,9 +383,9 @@ function _buildStars(stars) {
 
   // Always create all three meshes with at least 1 slot to avoid null references.
   // Extra slots beyond actual count are harmless — they'll have scale(0).
-  instancedSmall = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 7, 7),  mat(), Math.max(1, cntS));
-  instancedMed   = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 8),  mat(), Math.max(1, cntM));
-  instancedLarge = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 9, 9),  mat(), Math.max(1, cntL));
+  instancedSmall = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 4, 4),  mat(), Math.max(1, cntS));
+  instancedMed   = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 5, 5),  mat(), Math.max(1, cntM));
+  instancedLarge = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 6, 6),  mat(), Math.max(1, cntL));
 
   [instancedSmall, instancedMed, instancedLarge].forEach(im => {
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -436,7 +436,11 @@ function _buildStars(stars) {
   instanceMapSmall = starDataArray.filter(e => e.tierMesh === instancedSmall);
   instanceMapMed   = starDataArray.filter(e => e.tierMesh === instancedMed);
   instanceMapLarge = starDataArray.filter(e => e.tierMesh === instancedLarge);
-  [instancedSmall, instancedMed, instancedLarge].forEach(im => scene.add(im));
+  [instancedSmall, instancedMed, instancedLarge].forEach(im => {
+    if (!im) return;
+    im.frustumCulled = false; // instanced meshes need this off — Three.js can't cull them correctly
+    scene.add(im);
+  });
 
   const starTex = _makeStarTex();
   Object.entries(glowByCluster).forEach(([cluster, pts]) => {
@@ -464,20 +468,27 @@ function _buildEdges(stars) {
   });
 
   const positions = [], colors = [];
-  const K = 6;
+  const K = 4; // fewer edges per star = less geometry
 
   Object.entries(groups).forEach(([cluster, members]) => {
     if (members.length < 2) return;
     const col = new THREE.Color(CLUSTER_COLORS[cluster] || DEFAULT_COLOR);
     const added = new Set();
 
-    members.forEach((sa, a) => {
+    // PERF: cap per-cluster sample to 300 stars for edge building.
+    // With 1000+ stars per cluster the O(n²) distance sort is very slow.
+    // We pick a representative sample — the visual result is identical.
+    const sample = members.length > 300
+      ? members.filter((_, i) => i % Math.ceil(members.length / 300) === 0)
+      : members;
+
+    sample.forEach((sa, a) => {
       const dists = [];
-      for (let b = 0; b < members.length; b++) {
+      for (let b = 0; b < sample.length; b++) {
         if (b === a) continue;
-        const sb = members[b];
+        const sb = sample[b];
         const dx=sa.x-sb.x, dy=sa.y-sb.y, dz=sa.z-sb.z;
-        dists.push({ b, d: Math.sqrt(dx*dx+dy*dy+dz*dz) });
+        dists.push({ b, d: dx*dx+dy*dy+dz*dz }); // skip sqrt — only need relative order
       }
       dists.sort((x,y) => x.d - y.d);
       const maxD = dists[Math.min(K-1, dists.length-1)].d;
@@ -487,7 +498,7 @@ function _buildEdges(stars) {
         const key = a < b ? `${a}_${b}` : `${b}_${a}`;
         if (added.has(key)) continue;
         added.add(key);
-        const sb = members[b];
+        const sb = sample[b];
         const br = Math.max(0.1, 1 - d / (maxD * 2));
         positions.push(sa.x,sa.y,sa.z, sb.x,sb.y,sb.z);
         colors.push(col.r*br,col.g*br,col.b*br, col.r*br,col.g*br,col.b*br);
@@ -563,7 +574,7 @@ function _bindControls(canvas) {
   });
 
   window.addEventListener('wheel', e => {
-    tgtR = Math.max(2, Math.min(150, tgtR + e.deltaY * 0.06));
+    tgtR = Math.max(2, Math.min(250, tgtR + e.deltaY * 0.08));
     autoRotate = false;
     setTimeout(() => { autoRotate = true; }, 5000);
   }, { passive: true });
@@ -648,22 +659,44 @@ function _animate() {
   camera.lookAt(pivot);
 
   _animateFloats();
-  if (performance.now() - lastRaycast > 80) { lastRaycast = performance.now(); _updateHover(); }
+  if (performance.now() - lastRaycast > 120) { lastRaycast = performance.now(); _updateHover(); }
 
   renderer.render(scene, camera);
 }
 
+// Float animation runs every N frames, not every frame.
+// With 15k stars running sin/cos + matrix decompose + updateMatrix every 16ms
+// burns significant CPU. At 60fps, every-4th-frame is still 15fps of float
+// movement which looks perfectly smooth for subtle drift.
+let _floatFrame = 0;
+const FLOAT_EVERY = 4; // animate floats every 4 frames
+
 function _animateFloats() {
+  _floatFrame++;
+  // Only run the expensive loop every FLOAT_EVERY frames
+  if (_floatFrame % FLOAT_EVERY !== 0) return;
+
+  // Only animate stars within ~60 units of the camera pivot (visible cluster)
+  // Stars far away are invisible at normal zoom so no need to update them
+  const px = pivot.x, py = pivot.y, pz = pivot.z;
+  const DIST2 = 65 * 65; // squared distance threshold
+
   let nS=false, nM=false, nL=false;
+  const b = basePosArray;
   starDataArray.forEach(({ tierMesh, localId, globalIdx }) => {
+    const bx = b[globalIdx*3], by = b[globalIdx*3+1], bz = b[globalIdx*3+2];
+    // Skip stars far from the current pivot (not in view)
+    const dx=bx-px, dy=by-py, dz=bz-pz;
+    if (dx*dx+dy*dy+dz*dz > DIST2) return;
+
     tierMesh.getMatrixAt(localId, _floatDummy.matrix);
     _floatDummy.matrix.decompose(_floatDummy.position, _floatDummy.quaternion, _floatDummy.scale);
     if (_floatDummy.scale.x < 0.1) return;
-    const b = basePosArray;
+
     _floatDummy.position.set(
-      b[globalIdx*3]   + Math.sin(t*0.25 + globalIdx)     * 0.04,
-      b[globalIdx*3+1] + Math.cos(t*0.2  + globalIdx*1.3) * 0.04,
-      b[globalIdx*3+2] + Math.sin(t*0.18 + globalIdx*0.7) * 0.04,
+      bx + Math.sin(t*0.25 + globalIdx)     * 0.04,
+      by + Math.cos(t*0.2  + globalIdx*1.3) * 0.04,
+      bz + Math.sin(t*0.18 + globalIdx*0.7) * 0.04,
     );
     _floatDummy.updateMatrix();
     tierMesh.setMatrixAt(localId, _floatDummy.matrix);

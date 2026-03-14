@@ -9,6 +9,8 @@
 import { FALLBACK_PAPERS } from './data.js';
 
 const API_BASE = '/api';
+// Cache the backend check as a promise so concurrent calls don't fire multiple requests
+let _backendCheckPromise = null;
 let _usingBackend = null;
 
 // All loaded stars (from stars.json or fallback) — set by main.js after load
@@ -61,8 +63,11 @@ function _buildIndex() {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function doSearch(query) {
-  // Try backend first if available
-  if (_usingBackend === null) _usingBackend = await _checkBackend();
+  // Try backend first — use promise cache so concurrent calls don't fire multiple health checks
+  if (_usingBackend === null) {
+    if (!_backendCheckPromise) _backendCheckPromise = _checkBackend();
+    _usingBackend = await _backendCheckPromise;
+  }
   if (_usingBackend) {
     try { return await _remoteSearch(query); }
     catch (e) {
