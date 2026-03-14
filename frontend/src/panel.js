@@ -12,7 +12,8 @@
  *  - All 15 cluster labels and colors mapped correctly.
  */
 
-import { flyTo, getRemappedPos } from './galaxy.js';
+import { flyTo, getRemappedPos, togglePinned, isPinned } from './galaxy.js';
+
 
 // Full corpus — set by main.js via setCorpus() after stars load
 let _corpus = [];
@@ -94,6 +95,18 @@ export function showDetail(paper) {
   document.getElementById('score-val').textContent      = score.toFixed(3);
   document.getElementById('score-val').style.color      = css;
 
+  const pinBtn = document.getElementById('pin-btn');
+  if (pinBtn) {
+    const refreshPinLabel = () => {
+      pinBtn.textContent = isPinned(paper.id) ? '★ UNPIN STAR' : '☆ PIN AS STAR';
+    };
+    refreshPinLabel();
+    pinBtn.onclick = () => {
+      togglePinned(paper.id);
+      refreshPinLabel();
+    };
+  }
+  
   _loadSimilar(paper);
 
   const kw = (paper.keywords || [])[0] || (paper.title || '').split(' ')[0] || '';

@@ -11,9 +11,25 @@
  *     CLUSTER_COLORS is already populated (it was being read too early).
  *  3. Legend 'all' row click-handler now correctly uses clearHighlights()
  *     before calling filterCluster('all').
+ *
+ * Features:
+ *  - Time Travel year slider
+ *  - Meteor of the Day panel
+ *  - PIN AS STAR button in detail panel
+ *  - Warp overlay
+ *  - Grouped legend with all 15 clusters
  */
 
-import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos, CLUSTER_COLORS } from './galaxy.js';
+import {
+  initGalaxy,
+  highlightStars,
+  clearHighlights,
+  flyTo,
+  flyToCluster,
+  getRemappedPos,
+  CLUSTER_COLORS,
+  setActiveYear
+} from './galaxy.js';
 import { doSearch, setSearchCorpus } from './search.js';
 import { showDetail, closeDetail, setCorpus } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
@@ -23,8 +39,10 @@ document.getElementById('app').innerHTML = `
 <canvas id="canvas"></canvas>
 
 <div id="hud-top">
-  <div class="wordmark">search<em>·comète</em></div>
-  <div class="tagline">Semantic search · Elasticsearch ELSER · Vector space exploration</div>
+  <div>
+    <div class="wordmark">search<em>·comète</em></div>
+    <div class="tagline">Semantic search · Elasticsearch ELSER · Vector space exploration</div>
+  </div>
   <div class="elastic-pill"><div class="es-dot"></div>ELASTIC · kNN</div>
 </div>
 
@@ -45,6 +63,14 @@ document.getElementById('app').innerHTML = `
 
 <div id="results-label"></div>
 
+<div id="time-travel">
+  <div class="tt-heading">TIME TRAVEL</div>
+  <input id="year-slider" type="range" />
+  <div id="year-readout">ALL YEARS</div>
+</div>
+
+<div id="meteor-fact"></div>
+
 <div id="legend">
   <div class="legend-row active" data-cluster="all">
     <div class="legend-dot" style="background:rgba(245,242,235,0.4)"></div>ALL FIELDS
@@ -60,6 +86,9 @@ document.getElementById('app').innerHTML = `
   <div id="detail-title"></div>
   <div id="detail-authors"></div>
   <div id="detail-year"></div>
+  <div id="detail-actions">
+    <button id="pin-btn" class="detail-action-btn">☆ PIN AS STAR</button>
+  </div>
   <div class="detail-field-label">Abstract</div>
   <div id="detail-abstract"></div>
   <div class="detail-field-label">Semantic relevance score</div>
@@ -140,6 +169,73 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 #warp-overlay { position:fixed; inset:0; z-index:15; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(201,168,76,0.04) 0%,transparent 70%); transition:opacity 0.3s; }
 #warp-overlay.active { opacity:1; }
 
+/* Time Travel */
+#time-travel {
+  position: fixed;
+  right: 24px;
+  top: 170px;
+  z-index: 10;
+  width: 220px;
+  background: rgba(10,10,18,0.78);
+  border: 0.5px solid rgba(245,242,235,0.1);
+  padding: 12px 14px;
+  border-radius: 2px;
+  backdrop-filter: blur(8px);
+}
+.tt-heading {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+#year-slider {
+  width: 100%;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+#year-readout {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(245,242,235,0.45);
+}
+
+/* Meteor of the Day */
+#meteor-fact {
+  position: fixed;
+  right: 24px;
+  bottom: 80px;
+  width: 280px;
+  z-index: 10;
+  background: rgba(10,10,18,0.78);
+  border: 0.5px solid rgba(245,242,235,0.1);
+  padding: 14px 16px;
+  border-radius: 2px;
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+}
+#meteor-fact .meteor-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+#meteor-fact .meteor-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper);
+  margin-bottom: 6px;
+}
+#meteor-fact .meteor-meta {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(245,242,235,0.38);
+  line-height: 1.6;
+}
+
 /* Detail panel */
 #detail-panel { position:fixed; right:0; top:0; bottom:0; width:360px; background:rgba(10,10,18,0.97); border-left:0.5px solid rgba(245,242,235,0.08); z-index:20; transform:translateX(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1); overflow-y:auto; padding:28px 28px 40px; display:flex; flex-direction:column; gap:0; cursor:default; }
 #detail-panel.open { transform:translateX(0); }
@@ -150,6 +246,27 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 #detail-title { font-family:var(--serif); font-size:20px; font-weight:300; line-height:1.45; color:var(--paper); margin-bottom:8px; }
 #detail-authors { font-family:var(--mono); font-size:10px; color:rgba(245,242,235,0.4); letter-spacing:0.04em; line-height:1.6; margin-bottom:6px; }
 #detail-year { font-family:var(--mono); font-size:10px; color:var(--gold); letter-spacing:0.08em; }
+#detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.detail-action-btn {
+  background: rgba(245,242,235,0.04);
+  border: 0.5px solid rgba(245,242,235,0.12);
+  color: var(--gold);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.detail-action-btn:hover {
+  background: rgba(201,168,76,0.08);
+  border-color: rgba(201,168,76,0.35);
+}
 #detail-abstract { font-family:var(--serif); font-size:13px; font-style:italic; line-height:1.75; color:rgba(245,242,235,0.65); border-left:1.5px solid rgba(201,168,76,0.25); padding-left:14px; margin-top:4px; }
 #detail-score { display:flex; align-items:center; gap:10px; margin-top:4px; }
 .score-bar-wrap { flex:1; height:3px; background:rgba(245,242,235,0.08); border-radius:2px; overflow:hidden; }
@@ -200,7 +317,10 @@ document.getElementById('legend').addEventListener('click', e => {
   document.querySelectorAll('.legend-row').forEach(r => r.classList.remove('active'));
   row.classList.add('active');
   const cluster = row.dataset.cluster;
-  import('./galaxy.js').then(({ filterCluster }) => filterCluster(cluster));
+  import('./galaxy.js').then(({ filterCluster }) => {
+    if (cluster === 'all') clearHighlights();
+    filterCluster(cluster);
+  });
 });
 
 async function triggerSearch() {
@@ -394,6 +514,41 @@ const CLUSTER_META = {
   education:         { label: 'Education',         group: 'Social Sciences'  },
 };
 
+function buildMeteorFact(stars) {
+  const meteor = document.getElementById('meteor-fact');
+  if (!meteor || !stars.length) return;
+
+  const mostCited = [...stars].sort(
+    (a, b) => (b.cite ?? b.citations ?? 0) - (a.cite ?? a.citations ?? 0)
+  )[0];
+
+  const newest = [...stars].sort(
+    (a, b) => (b.year || 0) - (a.year || 0)
+  )[0];
+
+  const picks = [
+    {
+      title: mostCited.title,
+      meta: `Most cited object in this universe · ${(mostCited.cite ?? mostCited.citations ?? 0).toLocaleString()} citations`
+    },
+    {
+      title: newest.title,
+      meta: `Newest signal detected · ${newest.year || 'Unknown year'}`
+    },
+    {
+      title: stars[Math.floor(Math.random() * stars.length)].title,
+      meta: `Meteor of the day · Random jump target`
+    }
+  ];
+
+  const pick = picks[Math.floor(Math.random() * picks.length)];
+  meteor.innerHTML = `
+    <div class="meteor-label">METEOR OF THE DAY</div>
+    <div class="meteor-title">${pick.title}</div>
+    <div class="meteor-meta">${pick.meta}</div>
+  `;
+}
+
 function _getClusterMeta(id) {
   return CLUSTER_META[id] || CLUSTER_META[id?.toLowerCase()] || {
     label: (id || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -405,7 +560,6 @@ function _buildLegend(stars) {
   const clusterIds = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
   const legend = document.getElementById('legend');
 
-  // Group clusters by their parent group
   const groups = {};
   clusterIds.forEach(id => {
     const meta = _getClusterMeta(id);
@@ -413,29 +567,41 @@ function _buildLegend(stars) {
     groups[meta.group].push(id);
   });
 
-  // Keep ALL row, clear rest
   const allRow = legend.querySelector('[data-cluster="all"]');
   legend.innerHTML = '';
   if (allRow) legend.appendChild(allRow);
 
-  // Add CSS for subgroups if not already added
   if (!document.getElementById('legend-subgroup-style')) {
     const s = document.createElement('style');
     s.id = 'legend-subgroup-style';
     s.textContent = `
       .legend-group-header {
-        font-family: var(--mono); font-size: 8px; letter-spacing: 0.18em;
-        color: rgba(245,242,235,0.2); text-transform: uppercase;
-        margin-top: 10px; margin-bottom: 2px; padding-left: 15px;
-        pointer-events: none; user-select: none;
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: 0.18em;
+        color: rgba(245,242,235,0.2);
+        text-transform: uppercase;
+        margin-top: 10px;
+        margin-bottom: 2px;
+        padding-left: 15px;
+        pointer-events: none;
+        user-select: none;
       }
       .legend-group-header:first-of-type { margin-top: 6px; }
     `;
     document.head.appendChild(s);
   }
 
-  // Render grouped legend
-  const groupOrder = ['AI & Computing','Formal Sciences','Natural Sciences','Life Sciences','Applied Sciences','Social Sciences','Other'];
+  const groupOrder = [
+    'AI & Computing',
+    'Formal Sciences',
+    'Natural Sciences',
+    'Life Sciences',
+    'Applied Sciences',
+    'Social Sciences',
+    'Other'
+  ];
+
   groupOrder.forEach(groupName => {
     const ids = groups[groupName];
     if (!ids || !ids.length) return;
@@ -446,23 +612,56 @@ function _buildLegend(stars) {
     legend.appendChild(header);
 
     ids.forEach(id => {
-      const meta    = _getClusterMeta(id);
+      const meta = _getClusterMeta(id);
       const colorHex = CLUSTER_COLORS[id];
-      const hex      = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : '#888888';
-      const row      = document.createElement('div');
-      row.className  = 'legend-row';
+      const hex = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : '#888888';
+
+      const row = document.createElement('div');
+      row.className = 'legend-row';
       row.dataset.cluster = id;
-      row.innerHTML  = `<div class="legend-dot" style="background:${hex}"></div>${meta.label.toUpperCase()}`;
+      row.innerHTML = `<div class="legend-dot" style="background:${hex}"></div>${meta.label.toUpperCase()}`;
       legend.appendChild(row);
     });
   });
 
-  console.log('[main] Legend built —', Object.keys(groups).map(g => `${g}: ${groups[g].join(',')}`).join(' | '));
+  console.log(
+    '[main] Legend built —',
+    Object.keys(groups).map(g => `${g}: ${groups[g].join(',')}`).join(' | ')
+  );
 }
 
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
+
+  buildMeteorFact(stars);
+
+  // Set up Time Travel year slider
+  const years = stars.map(s => Number(s.year)).filter(Number.isFinite);
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+
+  const slider = document.getElementById('year-slider');
+  const readout = document.getElementById('year-readout');
+
+  slider.min = minYear;
+  slider.max = maxYear;
+  slider.step = 1;
+  slider.value = maxYear;
+
+  const syncYear = () => {
+    const y = Number(slider.value);
+    if (y >= maxYear) {
+      setActiveYear(Infinity);
+      readout.textContent = 'ALL YEARS';
+    } else {
+      setActiveYear(y);
+      readout.textContent = `VISIBLE THROUGH ${y}`;
+    }
+  };
+
+  slider.addEventListener('input', syncYear);
+  syncYear();
 
   // Give the corpus to both search.js and panel.js
   setSearchCorpus(stars);
