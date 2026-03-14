@@ -54,6 +54,18 @@ document.getElementById('app').innerHTML = `
   <div class="legend-row" data-cluster="math">
     <div class="legend-dot" style="background:#f06ba8"></div>MATHEMATICS
   </div>
+  <div class="legend-row" data-cluster="chem">
+    <div class="legend-dot" style="background:#f9c74f"></div>CHEMISTRY
+  </div>
+  <div class="legend-row" data-cluster="econ">
+    <div class="legend-dot" style="background:#90e0ef"></div>ECONOMICS
+  </div>
+  <div class="legend-row" data-cluster="env">
+    <div class="legend-dot" style="background:#52b788"></div>ENVIRONMENT
+  </div>
+  <div class="legend-row" data-cluster="med">
+    <div class="legend-dot" style="background:#e63946"></div>MEDICINE
+  </div>
 </div>
 
 <div id="star-count"></div>
@@ -84,6 +96,14 @@ document.getElementById('app').innerHTML = `
 </div>
 
 <div id="warp-overlay"></div>
+
+<div id="galaxy-loader">
+  <div class="loader-inner">
+    <div class="loader-title">search<em>·comète</em></div>
+    <div class="loader-bar-wrap"><div class="loader-bar"></div></div>
+    <div class="loader-label">Mapping the universe…</div>
+  </div>
+</div>
 `;
 
 // Inject global styles
@@ -163,6 +183,16 @@ html, body { width: 100%; height: 100%; background: var(--ink); color: var(--pap
 #tooltip { position:fixed; pointer-events:none; z-index:30; display:none; background:rgba(10,10,18,0.92); border:0.5px solid rgba(245,242,235,0.12); border-radius:2px; padding:8px 12px; max-width:240px; }
 #tt-title { font-family:var(--serif); font-size:12px; color:var(--paper); line-height:1.4; margin-bottom:3px; }
 #tt-meta { font-family:var(--mono); font-size:9px; color:rgba(245,242,235,0.35); letter-spacing:0.06em; }
+
+/* Loader */
+#galaxy-loader { position:fixed; inset:0; z-index:100; background:var(--ink); display:flex; align-items:center; justify-content:center; }
+.loader-inner { display:flex; flex-direction:column; align-items:center; gap:20px; }
+.loader-title { font-family:var(--display); font-size:28px; font-weight:800; letter-spacing:-0.02em; color:var(--paper); }
+.loader-title em { font-style:normal; color:var(--gold); }
+.loader-bar-wrap { width:240px; height:2px; background:rgba(245,242,235,0.08); border-radius:2px; overflow:hidden; }
+.loader-bar { height:100%; width:0%; background:var(--gold); border-radius:2px; animation:load-progress 2s ease-in-out forwards; }
+@keyframes load-progress { 0%{width:0%} 60%{width:75%} 90%{width:92%} 100%{width:100%} }
+.loader-label { font-family:var(--mono); font-size:10px; letter-spacing:0.15em; color:rgba(245,242,235,0.3); text-transform:uppercase; }
 `;
 document.head.appendChild(style);
 
@@ -222,12 +252,12 @@ async function triggerSearch() {
 // Try to load real stars.json from the backend; fall back to bundled data
 async function loadStars() {
   try {
-    const res = await fetch('/api/stars');
-    if (!res.ok) throw new Error('no backend');
+    const res = await fetch('/stars.json');
+    if (!res.ok) throw new Error('no stars.json');
     const data = await res.json();
-    return data.stars;
+    return data;
   } catch {
-    console.info('[search-comete] Backend not available — using fallback paper data');
+    console.info('[search-comete] Falling back to bundled data');
     return FALLBACK_PAPERS;
   }
 }
