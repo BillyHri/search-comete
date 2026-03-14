@@ -134,6 +134,7 @@ export function getRemappedPos(id) { return _remappedPos[String(id)]; }
 export function getScene()     { return scene; }
 export function getCamera()    { return camera; }
 export function getRaycaster() { return raycaster; }
+export function getRenderer()  { return renderer; }
 // ── END COMET ADDITION 2 ──────────────────────────────────────────────────────
 
 function _isYearVisible(star) {
@@ -390,6 +391,8 @@ export function flyToCluster({ x, y, z }) {
 function _warp() {
   const el = document.getElementById('warp-overlay');
   if (el) { el.classList.add('active'); setTimeout(() => el.classList.remove('active'), 450); }
+  // Notify sound system that a camera travel just happened
+  window.dispatchEvent(new CustomEvent('galaxy:travel'));
 }
 
 // ── Scene builders ────────────────────────────────────────────────────────────

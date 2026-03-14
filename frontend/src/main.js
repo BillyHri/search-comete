@@ -47,6 +47,9 @@ import { showDetail, closeDetail, setCorpus } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
 // COMET ADDITION: import the comet module
 import { initComets, tickComets, raycastComets, updateCorpus as updateCometCorpus, cleanTitle, stopCometTracking } from './comet.js';
+// SOUND + WORMHOLE ADDITIONS
+import { initSound, playWarp, playStarClick, playCometAppear, playCometClick } from './sound.js';
+import { initWormhole } from './wormhole.js';
 
 // ── Inject UI HTML ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
@@ -770,4 +773,47 @@ loadStars().then(stars => {
     );
   }
   // ── END COMET ADDITION ────────────────────────────────────────────────────
+
+  // ── SOUND + WORMHOLE ADDITIONS ────────────────────────────────────────────
+
+  // Sound — init on first user interaction (browsers require gesture to start AudioContext)
+  const _startSound = () => {
+    initSound();
+    window.removeEventListener('click', _startSound);
+    window.removeEventListener('keydown', _startSound);
+  };
+  window.addEventListener('click', _startSound);
+  window.addEventListener('keydown', _startSound);
+
+  // Wire warp sound — only fires when camera actually travels (not every click)
+  // galaxy.js dispatches 'galaxy:travel' whenever flyTo/flyToCluster/filterCluster runs
+  window.addEventListener('galaxy:travel', () => playWarp());
+
+  // Wire star click sound — listen for detail panel opening
+  const _detailObserver = new MutationObserver(() => {
+    const panel = document.getElementById('detail-panel');
+    if (panel && panel.classList.contains('open')) {
+      const cat = document.getElementById('detail-category');
+      const cluster = cat ? cat.textContent.toLowerCase().trim() : '';
+      playStarClick(cluster);
+    }
+  });
+  const detailPanel = document.getElementById('detail-panel');
+  if (detailPanel) {
+    _detailObserver.observe(detailPanel, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  // Wire comet sounds via custom events from comet.js
+  window.addEventListener('comet:appeared', () => playCometAppear());
+  window.addEventListener('comet:clicked',  () => playCometClick());
+
+  // Wormhole — pass galaxy renderer so it can flip the canvas bg color
+  import('./galaxy.js').then(mod => {
+    const rend = mod.getRenderer ? mod.getRenderer() : null;
+    initWormhole((newMode) => {
+      console.log(`[wormhole] Switched to ${newMode} mode`);
+    }, rend);
+  });
+
+  // ── END SOUND + WORMHOLE ADDITIONS ───────────────────────────────────────
 });
