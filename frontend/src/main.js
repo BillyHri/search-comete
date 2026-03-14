@@ -30,6 +30,7 @@ import {
   getRemappedPos,
   CLUSTER_COLORS,
   setActiveYear,
+  setPivotTarget,
 } from './galaxy.js';
 
 // COMET ADDITION: these four functions need to be added to galaxy.js (see galaxy-comet-patch.md).
@@ -45,7 +46,7 @@ import { doSearch, setSearchCorpus } from './search.js';
 import { showDetail, closeDetail, setCorpus } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
 // COMET ADDITION: import the comet module
-import { initComets, tickComets, raycastComets, updateCorpus as updateCometCorpus } from './comet.js';
+import { initComets, tickComets, raycastComets, updateCorpus as updateCometCorpus, cleanTitle, stopCometTracking } from './comet.js';
 
 // ── Inject UI HTML ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
@@ -645,9 +646,16 @@ function _buildLegend(stars) {
 
 // ── COMET ADDITION: click handler ─────────────────────────────────────────────
 
+// comet:flyto — initial jump when user clicks the toast.
+// Use flyToCluster (tgtR=28) not flyTo (tgtR=6) — we need to stay far enough
+// back that the full comet tail is visible in the camera frustum.
+// setPivotTarget then takes over every frame and holds tgtR=45.
+window.addEventListener('comet:flyto', e => {
+  flyToCluster(e.detail);
+});
+
 function _onCometClick(comet) {
   if (!comet.paper) {
-    // Paper still resolving from API — show brief waiting message and retry
     const toast = document.getElementById('comet-toast');
     if (toast) {
       toast.textContent = '⟳ ANALYSING COMET TRAJECTORY…';
@@ -656,11 +664,13 @@ function _onCometClick(comet) {
     setTimeout(() => { if (comet.paper) _onCometClick(comet); }, 800);
     return;
   }
-  const paper = comet.paper;
+  // Shallow-copy so we don't mutate the corpus entry
+  const paper = { ...comet.paper };
+  // Strip MathML/HTML from the title so the detail panel never shows raw XML
+  paper.title = cleanTitle(paper.title);
   console.log(`[comets] Clicked — opening: "${paper.title}"`);
-  const scenePos = getRemappedPos(paper.id);
-  if (scenePos) flyToCluster(scenePos);
-  highlightStars([paper.id]);
+  // Open the detail panel — no highlightStars call, it's not needed when
+  // tracking a moving comet and the redraw can interfere with the tail
   setTimeout(() => showDetail(paper), 500);
 }
 
@@ -711,7 +721,7 @@ loadStars().then(stars => {
   const camera  = getCamera?.();
 
   if (scene && camera) {
-    initComets(scene, camera, stars, _onCometClick);
+    initComets(scene, camera, stars, _onCometClick, setPivotTarget);
 
     // Tick comets every frame via galaxy's frame hook
     registerFrameHook?.(delta => tickComets(delta));
@@ -723,6 +733,29 @@ loadStars().then(stars => {
       const hit = raycastComets(raycaster);
       if (hit) _onCometClick(hit);
     });
+
+    // Stop tracking only when user drags the canvas (mousedown THEN mousemove)
+    // Plain hover or toast click must never kill tracking
+    {
+      let _canvasDragArmed = false;
+      const cvs = document.getElementById('canvas');
+      cvs.addEventListener('mousedown', () => {
+        _canvasDragArmed = true; // armed — if mouse moves now it's a drag
+      });
+      window.addEventListener('mouseup', () => {
+        _canvasDragArmed = false; // released without dragging = just a click
+      });
+      cvs.addEventListener('mousemove', () => {
+        if (_canvasDragArmed) {
+          // mousedown is held and mouse moved = real drag
+          stopCometTracking();
+          _canvasDragArmed = false;
+        }
+      });
+      cvs.addEventListener('touchmove', () => {
+        stopCometTracking();
+      }, { passive: true });
+    }
 
     updateCometCorpus(stars);
     console.log('[main] Comet system active ✓');

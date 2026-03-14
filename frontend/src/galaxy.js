@@ -367,6 +367,17 @@ export function flyTo({ x, y, z }) {
   _warp();
 }
 
+// COMET ADDITION: update pivot target for comet tracking.
+// We set pivotTarget AND directly copy to pivot each frame so the lerp
+// never lags — the comet moves slowly enough that instant-follow is smooth.
+export function setPivotTarget({ x, y, z }) {
+  pivotTarget.set(x, y, z);
+  pivot.copy(pivotTarget); // no lerp lag — snap directly every frame
+  // 45 units: close enough to clearly see the comet head,
+  // far enough that the full tail behind it stays in the camera frustum
+  tgtR = 45;
+}
+
 export function flyToCluster({ x, y, z }) {
   pivotTarget.set(x, y, z);
   tgtR = 28;

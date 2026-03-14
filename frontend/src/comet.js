@@ -17,9 +17,10 @@ import * as THREE from 'three';
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const MIN_INTERVAL_MS = 0.02 * 60 * 1000;   // 2 min
-const MAX_INTERVAL_MS = 0.05 * 60 * 1000;   // 4 min
-const COMET_DURATION  = 22.0;            // seconds to cross the scene (slow & visible)
-const TAIL_SEGMENTS   = 48;
+const MAX_INTERVAL_MS = 0.04 * 60 * 1000;   // 4 min
+const COMET_DURATION  = 35.0;            // seconds to cross the scene
+const TAIL_POINTS     = 120;             // world-space positions stored in history
+const TAIL_DRAW       = 80;             // how many to actually render each frame
 const SPAWN_RADIUS    = 180;             // distance from origin comets spawn at
 const MAX_LIVE_COMETS = 2;
 
@@ -29,6 +30,7 @@ let _scene    = null;
 let _camera   = null;
 let _corpus   = [];
 let _onCometClick = null;
+let _setPivot = null; // direct reference to galaxy's setPivotTarget — set at init
 
 // Recently-clicked paper IDs to avoid repeats
 const _recentIds = [];
@@ -39,6 +41,12 @@ const _active = [];
 
 let _nextSpawnAt = null; // epoch ms
 
+// The comet currently being tracked by the camera (null = not tracking)
+let _trackedComet = null;
+
+// Export so main.js can call stopTracking() when the user drags the camera
+export function stopCometTracking() { _trackedComet = null; }
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -47,11 +55,12 @@ let _nextSpawnAt = null; // epoch ms
  * @param {Array}          corpus   — full star array from main.js
  * @param {Function}       onCometClick(paper) — called when user clicks a comet
  */
-export function initComets(scene, camera, corpus, onCometClick) {
+export function initComets(scene, camera, corpus, onCometClick, setPivot) {
   _scene        = scene;
   _camera       = camera;
   _corpus       = corpus;
   _onCometClick = onCometClick;
+  _setPivot     = setPivot || null;
   _scheduleNext();
   console.log('[comets] Initialised — first comet in', _msUntilNext().toFixed(0), 'ms');
 }
@@ -80,10 +89,18 @@ export function tickComets(delta, elapsed) {
     c.t += delta / COMET_DURATION;
     _updateComet(c);
     if (c.t >= 1.0) {
+      // If we were tracking this comet, stop when it leaves the scene
+      if (_trackedComet === c) _trackedComet = null;
       _destroyComet(c);
       _active.splice(i, 1);
       _scheduleNext();
     }
+  }
+
+  // If tracking a comet, call setPivot directly every frame (sync, no event overhead)
+  if (_trackedComet && _setPivot) {
+    const pos = _trackedComet.group.position;
+    _setPivot({ x: pos.x, y: pos.y, z: pos.z });
   }
 }
 
@@ -158,18 +175,39 @@ async function _spawnComet() {
   glowSprite.scale.setScalar(4.5);
   group.add(glowSprite);
 
-  // Tail — line with fading opacity via vertex colors
-  const tailPositions = new Float32Array(TAIL_SEGMENTS * 3);
-  const tailColors    = new Float32Array(TAIL_SEGMENTS * 3);
-  const tailGeo = new THREE.BufferGeometry();
-  tailGeo.setAttribute('position', new THREE.BufferAttribute(tailPositions, 3).setUsage(THREE.DynamicDrawUsage));
-  tailGeo.setAttribute('color',    new THREE.BufferAttribute(tailColors,    3).setUsage(THREE.DynamicDrawUsage));
-  const tailMat = new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+  // Tail — tube made of many billboard quads so it has real thickness when zoomed in.
+  // We use a line of CylinderGeometry segments oriented along the path each frame,
+  // but the simplest visible-at-any-zoom approach is a Points cloud along the trail
+  // with sizeAttenuation:false so dots stay a fixed screen size regardless of zoom.
+  const TUBE_DOTS = TAIL_POINTS;
+  const tailDotGeo = new THREE.BufferGeometry();
+  const tailDotPos = new Float32Array(TUBE_DOTS * 3);
+  const tailDotCol = new Float32Array(TUBE_DOTS * 3);
+  tailDotGeo.setAttribute('position', new THREE.BufferAttribute(tailDotPos, 3).setUsage(THREE.DynamicDrawUsage));
+  tailDotGeo.setAttribute('color',    new THREE.BufferAttribute(tailDotCol, 3).setUsage(THREE.DynamicDrawUsage));
+  // sizeAttenuation false = constant screen-space size regardless of zoom depth
+  const tailDotMat = new THREE.PointsMaterial({
+    vertexColors: true,
+    size: 3.5,               // pixels — visible at any zoom
+    sizeAttenuation: false,  // KEY: constant screen size
+    transparent: true,
+    opacity: 1.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
-  const tailLine = new THREE.Line(tailGeo, tailMat);
-  _scene.add(tailLine); // separate from group so it doesn't rotate
+  const tailDots = new THREE.Points(tailDotGeo, tailDotMat);
+  _scene.add(tailDots);
+  // Keep a thin line too for the far-zoom look
+  const tailLinePts = new Float32Array(TUBE_DOTS * 3);
+  const tailLineCol = new Float32Array(TUBE_DOTS * 3);
+  const tailLineGeo = new THREE.BufferGeometry();
+  tailLineGeo.setAttribute('position', new THREE.BufferAttribute(tailLinePts, 3).setUsage(THREE.DynamicDrawUsage));
+  tailLineGeo.setAttribute('color',    new THREE.BufferAttribute(tailLineCol, 3).setUsage(THREE.DynamicDrawUsage));
+  const tailLineMesh = new THREE.Line(tailLineGeo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.6,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  _scene.add(tailLineMesh);
 
   // Particle puff behind head
   const puffGeo = new THREE.BufferGeometry();
@@ -191,10 +229,13 @@ async function _spawnComet() {
   const comet = {
     t: 0,
     startPos, mid, endPos,
-    group, head, headMat, glowSprite, tailLine, tailGeo, puff, puffGeo, hitSphere,
+    group, head, headMat, glowSprite,
+    tailDots, tailDotGeo, tailDotMat,
+    tailLineMesh, tailLineGeo,
+    puff, puffGeo, hitSphere,
     color,
-    paper: null,        // filled when promise resolves
-    posHistory: [],
+    paper: null,
+    posHistory: [],   // world-space Vector3 history
   };
 
   _active.push(comet);
@@ -224,47 +265,63 @@ function _updateComet(c) {
   c.group.position.copy(pos);
   c.hitSphere.position.copy(pos);
 
-  // Store position history for tail
+  // Store every frame — no subsampling, so history is always dense
+  // and the tail never disappears due to a minimum-distance threshold
   c.posHistory.unshift(pos.clone());
-  if (c.posHistory.length > TAIL_SEGMENTS) c.posHistory.pop();
+  if (c.posHistory.length > TAIL_POINTS) c.posHistory.pop();
 
-  // Update tail geometry
-  const tailPos = c.tailGeo.attributes.position;
-  const tailCol = c.tailGeo.attributes.color;
-  const r = ((c.color >> 16) & 255) / 255;
-  const g = ((c.color >> 8)  & 255) / 255;
-  const b = (c.color & 255) / 255;
+  const cr = ((c.color >> 16) & 255) / 255;
+  const cg = ((c.color >> 8)  & 255) / 255;
+  const cb = (c.color & 255) / 255;
+  const drawN = Math.min(c.posHistory.length, TAIL_DRAW);
 
-  for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    const p = c.posHistory[i] || pos;
-    tailPos.setXYZ(i, p.x, p.y, p.z);
-    const fade = Math.pow(1 - i / TAIL_SEGMENTS, 1.8);
-    tailCol.setXYZ(i, r * fade, g * fade, b * fade);
+  // Update dot trail (screen-space fixed size — visible at any zoom)
+  const dotPos = c.tailDotGeo.attributes.position;
+  const dotCol = c.tailDotGeo.attributes.color;
+  for (let i = 0; i < TAIL_POINTS; i++) {
+    const hp = c.posHistory[i] || pos;
+    dotPos.setXYZ(i, hp.x, hp.y, hp.z);
+    const fade = i < drawN ? Math.pow(1 - i / drawN, 1.4) : 0;
+    dotCol.setXYZ(i, cr * fade, cg * fade, cb * fade);
   }
-  tailPos.needsUpdate = true;
-  tailCol.needsUpdate = true;
-  c.tailGeo.setDrawRange(0, c.posHistory.length);
+  dotPos.needsUpdate = true;
+  dotCol.needsUpdate = true;
+  c.tailDotGeo.setDrawRange(0, TAIL_POINTS);
 
-  // Update puff particles — scatter near head with slight trail
+  // Update thin line (looks good from far away)
+  const lPos = c.tailLineGeo.attributes.position;
+  const lCol = c.tailLineGeo.attributes.color;
+  for (let i = 0; i < TAIL_POINTS; i++) {
+    const hp = c.posHistory[i] || pos;
+    lPos.setXYZ(i, hp.x, hp.y, hp.z);
+    const fade = i < drawN ? Math.pow(1 - i / drawN, 1.8) : 0;
+    lCol.setXYZ(i, cr * fade, cg * fade, cb * fade);
+  }
+  lPos.needsUpdate = true;
+  lCol.needsUpdate = true;
+  c.tailLineGeo.setDrawRange(0, drawN);
+
+  // Puff particles around head
   const puffPos = c.puffGeo.attributes.position;
   for (let i = 0; i < 24; i++) {
-    const histIdx = Math.floor(i / 24 * Math.min(c.posHistory.length, 8));
+    const histIdx = Math.floor(i / 24 * Math.min(c.posHistory.length, 6));
     const hp = c.posHistory[histIdx] || pos;
     puffPos.setXYZ(i,
-      hp.x + (Math.random() - 0.5) * 1.5,
-      hp.y + (Math.random() - 0.5) * 1.5,
-      hp.z + (Math.random() - 0.5) * 1.5,
+      hp.x + (Math.random() - 0.5) * 1.2,
+      hp.y + (Math.random() - 0.5) * 1.2,
+      hp.z + (Math.random() - 0.5) * 1.2,
     );
   }
   puffPos.needsUpdate = true;
 
-  // Fade out near end of life
+  // Fade in/out
   const fadeIn  = Math.min(1, t * 8);
   const fadeOut = t > 0.85 ? Math.max(0, 1 - (t - 0.85) / 0.15) : 1;
   const alpha   = fadeIn * fadeOut;
-  c.headMat.opacity = alpha;
-  c.tailLine.material.opacity = alpha * 0.9;
-  c.puff.material.opacity     = alpha * 0.55;
+  c.headMat.opacity             = alpha;
+  c.tailDotMat.opacity          = alpha;
+  c.tailLineMesh.material.opacity = alpha * 0.6;
+  c.puff.material.opacity       = alpha * 0.55;
   if (c.glowSprite.material) c.glowSprite.material.opacity = alpha * 0.75;
 }
 
@@ -272,16 +329,19 @@ function _updateComet(c) {
 
 function _destroyComet(c) {
   _scene.remove(c.group);
-  _scene.remove(c.tailLine);
+  _scene.remove(c.tailDots);
+  _scene.remove(c.tailLineMesh);
   _scene.remove(c.puff);
   _scene.remove(c.hitSphere);
-  c.tailGeo.dispose();
+  c.tailDotGeo.dispose();
+  c.tailDotMat.dispose();
+  c.tailLineGeo.dispose();
+  c.tailLineMesh.material.dispose();
   c.puffGeo.dispose();
-  c.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-  c.tailLine.material.dispose();
   c.puff.material.dispose();
-  c.hitSphere.material.dispose();
   c.hitSphere.geometry.dispose();
+  c.hitSphere.material.dispose();
+  c.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
 }
 
 // ── Paper picking — smart local scoring ──────────────────────────────────────
@@ -371,16 +431,30 @@ function _buildCrossClusterMap(corpus) {
   return map;
 }
 
+// Strip HTML/MathML tags — some OpenAlex titles contain raw <mml:math> markup
+// which pollutes the cross-cluster scorer if not removed first.
+function _stripHtml(str) {
+  return (str || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function _tokeniseTitle(title) {
+  const clean = _stripHtml(title);
   const STOP = new Set(['a','an','the','and','or','of','in','to','for','is','are',
     'was','were','with','on','using','based','via','from','by','as','at','its',
     'this','that','we','our','new','novel','deep','large','high','multi']);
-  return (title || '')
+  return clean
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(t => t.length > 3 && !STOP.has(t));
 }
+
+// Exported so panel.js / main.js can clean titles for display too
+export function cleanTitle(title) { return _stripHtml(title); }
 
 // ── Toast notification ────────────────────────────────────────────────────────
 
@@ -435,10 +509,19 @@ function _showCometToast(comet) {
   toast.textContent = '✦ COMET DETECTED — CLICK TO INVESTIGATE';
   toast.classList.add('show');
 
-  // Clicking the toast fires the callback directly — no raycasting needed
+  // Clicking the toast: fly camera to comet's current 3D position, then fire callback
   toast.addEventListener('click', () => {
     toast.classList.remove('show');
-    if (_onCometClick && comet) _onCometClick(comet);
+    if (comet) {
+      const pos = comet.group.position;
+      // Dispatch flyto for the initial zoom jump
+      window.dispatchEvent(new CustomEvent('comet:flyto', {
+        detail: { x: pos.x, y: pos.y, z: pos.z }
+      }));
+      // Start per-frame tracking — _setPivot is called every tick from now on
+      _trackedComet = comet;
+      if (_onCometClick) _onCometClick(comet);
+    }
   });
 
   // Auto-hide after the comet duration
