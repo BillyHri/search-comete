@@ -3,7 +3,7 @@
  * Entry point. Injects the UI shell then initialises galaxy, search, and panel.
  */
 
-import { initGalaxy, highlightStars, clearHighlights, flyTo } from './galaxy.js';
+import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos } from './galaxy.js';
 import { doSearch }                                             from './search.js';
 import { showDetail, closeDetail }                             from './panel.js';
 import { FALLBACK_PAPERS }                                     from './data.js';
@@ -240,29 +240,92 @@ async function triggerSearch() {
 
   highlightStars(results.map(r => r.id));
 
-  // Fly toward top result
+  // Fly toward top result — use remapped 3D position at cluster zoom level
   const top = results[0];
-  if (top.x !== undefined) flyTo({ x: top.x, y: top.y, z: top.z });
+  const remapped = getRemappedPos(top.id);
+  if (remapped) {
+    flyToCluster(remapped);
+  } else if (top.x !== undefined) {
+    flyToCluster({ x: top.x, y: top.y, z: top.z });
+  }
 
   // Show detail panel for top result after camera settles
   setTimeout(() => showDetail(top), 600);
 }
 
 // ── Init galaxy ───────────────────────────────────────────────────────────────
-// Try to load real stars.json from the backend; fall back to bundled data
 async function loadStars() {
+  // 1. Try the live /api/stars endpoint — always reflects current ES index
   try {
-    const res = await fetch('/stars.json');
-    if (!res.ok) throw new Error('no stars.json');
-    const data = await res.json();
-    return data;
-  } catch {
-    console.info('[search-comete] Falling back to bundled data');
-    return FALLBACK_PAPERS;
+    const res = await fetch('/api/stars', { signal: AbortSignal.timeout(10000) });
+    if (res.ok) {
+      const data = await res.json();
+      // /api/stars returns a plain array (fixed in main.py)
+      const stars = Array.isArray(data) ? data : data.stars;
+      if (stars && stars.length > 0) {
+        console.info(`[search-comete] Loaded ${stars.length} stars from API`);
+        return stars;
+      }
+    }
+  } catch (e) {
+    console.info('[search-comete] /api/stars unavailable:', e.message);
   }
+
+  // 2. Fall back to the static stars.json (pre-built by pipeline)
+  try {
+    const res = await fetch('/stars.json', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      const stars = Array.isArray(data) ? data : data.stars;
+      if (stars && stars.length > 0) {
+        console.info(`[search-comete] Loaded ${stars.length} stars from stars.json`);
+        return stars;
+      }
+    }
+  } catch (e) {
+    console.info('[search-comete] stars.json unavailable:', e.message);
+  }
+
+  // 3. Last resort — bundled fallback data (always has all clusters)
+  console.info('[search-comete] Using bundled fallback data');
+  return FALLBACK_PAPERS;
 }
 
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
+
+  // Rebuild the legend dynamically from whatever clusters exist in the data
+  // so it works regardless of how the pipeline named the clusters
+  import('./galaxy.js').then(({ CLUSTER_COLORS }) => {
+    const clusterNames = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
+    const LABELS = {
+      ml:'MACHINE LEARNING', bio:'BIOLOGY', phys:'PHYSICS', cs:'COMPUTER SCIENCE',
+      math:'MATHEMATICS', chem:'CHEMISTRY', econ:'ECONOMICS', env:'ENVIRONMENT', med:'MEDICINE',
+      machine_learning:'MACHINE LEARNING', biology:'BIOLOGY', physics:'PHYSICS',
+      computer_science:'COMPUTER SCIENCE', mathematics:'MATHEMATICS', chemistry:'CHEMISTRY',
+      economics:'ECONOMICS', environment:'ENVIRONMENT', medicine:'MEDICINE',
+    };
+    const legend = document.getElementById('legend');
+    // Keep the ALL row, rebuild the rest
+    const allRow = legend.querySelector('[data-cluster="all"]');
+    legend.innerHTML = '';
+    if (allRow) legend.appendChild(allRow);
+
+    clusterNames.forEach(name => {
+      const color = CLUSTER_COLORS[name];
+      const hex = color ? '#' + color.toString(16).padStart(6,'0') : '#888888';
+      const label = LABELS[name.toLowerCase()] || name.toUpperCase().replace(/_/g,' ');
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      row.dataset.cluster = name;
+      row.innerHTML = `<div class="legend-dot" style="background:${hex}"></div>${label}`;
+      row.addEventListener('click', () => {
+        document.querySelectorAll('.legend-row').forEach(r => r.classList.remove('active'));
+        row.classList.add('active');
+        import('./galaxy.js').then(({ filterCluster }) => filterCluster(name));
+      });
+      legend.appendChild(row);
+    });
+  });
 });

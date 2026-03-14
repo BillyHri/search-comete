@@ -69,16 +69,18 @@ class SimilarPaper(BaseModel):
 
 
 class PaperDetail(BaseModel):
-    id:       str
-    title:    str
-    authors:  Optional[str] = ""
-    year:     Optional[int] = None
-    citations:Optional[int] = 0
-    abstract: Optional[str] = ""
-    venue:    Optional[str] = ""
-    cluster:  str
-    color:    Optional[str] = "#ffffff"
-    x:        float = 0.0
-    y:        float = 0.0
-    z:        float = 0.0
-    similar:  list[SimilarPaper] = Field(default_factory=list)
+    id:        str
+    title:     str
+    authors:   Optional[str] = ""
+    year:      Optional[int] = None
+    citations: Optional[int] = 0
+    abstract:  Optional[str] = ""
+    venue:     Optional[str] = ""
+    cluster:   str
+    color:     Optional[str] = "#ffffff"
+    x:         float = 0.0
+    y:         float = 0.0
+    z:         float = 0.0
+    # FIX: added score so the frontend relevance bar works on paper detail view
+    score:     Optional[float] = None
+    similar:   list[SimilarPaper] = Field(default_factory=list)

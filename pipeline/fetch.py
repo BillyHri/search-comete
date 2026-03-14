@@ -92,16 +92,23 @@ def fetch_arxiv(query: str, limit: int = 200) -> list[dict]:
                 title    = (e.findtext(f"{{{ATOM_NS}}}title")   or "").replace("\n", " ").strip()
                 abstract = (e.findtext(f"{{{ATOM_NS}}}summary") or "").replace("\n", " ").strip()
                 year_raw = e.findtext(f"{{{ATOM_NS}}}published") or "2020"
-                authors  = ", ".join(
-                    a.findtext(f"{{{ATOM_NS}}}name") or ""
+
+                # FIX: store authors as a comma-joined string to match the Paper model (authors: str).
+                # Previously this returned list[dict] which caused a type mismatch when
+                # the pipeline tried to write it into the Paper model or index it into ES.
+                author_names = [
+                    (a.findtext(f"{{{ATOM_NS}}}name") or "").strip()
                     for a in e.findall(f"{{{ATOM_NS}}}author")
-                )
+                ]
+                authors_str = ", ".join(n for n in author_names if n)
+
                 if title and abstract:
                     papers.append({
                         "paperId":       e.findtext(f"{{{ATOM_NS}}}id") or str(uuid.uuid4()),
                         "title":         title,
                         "abstract":      abstract,
-                        "authors":       [{"name": n.strip()} for n in authors.split(",")],
+                        # Consistent string format — matches what the pipeline and Paper model expect
+                        "authors":       authors_str,
                         "year":          int(year_raw[:4]),
                         "citationCount": 0,
                         "venue":         "arXiv",
@@ -118,6 +125,22 @@ def fetch_arxiv(query: str, limit: int = 200) -> list[dict]:
             break
 
     return papers[:limit]
+
+
+def normalize_authors(paper: dict) -> str:
+    """
+    Normalize the authors field from either source into a plain comma-joined string.
+    Semantic Scholar returns authors as list[dict] with a 'name' key.
+    arXiv (after the fix above) already returns a string, but this handles both cases.
+    Call this in the pipeline before building the Paper object.
+    """
+    authors = paper.get("authors", "")
+    if isinstance(authors, list):
+        return ", ".join(
+            (a.get("name") or a) if isinstance(a, dict) else str(a)
+            for a in authors
+        )
+    return authors or ""
 
 
 # ── Deduplication ─────────────────────────────────────────────────────────────

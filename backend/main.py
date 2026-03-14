@@ -1,14 +1,12 @@
 """
 search-comete — backend/main.py
 FastAPI app. Routes only — query logic lives in search.py.
-
 Run: uvicorn backend.main:app --reload --port 8000
-  OR (from backend/ dir): uvicorn main:app --reload --port 8000
 """
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from elasticsearch import AsyncElasticsearch
 from typing import Optional
 import os
@@ -25,15 +23,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve pre-built stars.json as a static file (fast initial galaxy load)
-_stars_path = os.path.join(os.path.dirname(__file__), '..', 'pipeline', 'stars.json')
-if os.path.exists(_stars_path):
-    app.mount("/static", StaticFiles(directory=os.path.dirname(_stars_path)), name="static")
-
 # ── Elasticsearch client ──────────────────────────────────────────────────────
-ES_HOST      = os.getenv("ES_HOST",      "http://localhost:9200")
-ES_CLOUD_ID  = os.getenv("ES_CLOUD_ID",  "")
-ES_API_KEY   = os.getenv("ES_API_KEY",   "")
+ES_HOST     = os.getenv("ES_HOST",     "http://localhost:9200")
+ES_CLOUD_ID = os.getenv("ES_CLOUD_ID", "")
+ES_API_KEY  = os.getenv("ES_API_KEY",  "")
 
 def _make_es_client() -> AsyncElasticsearch:
     if ES_CLOUD_ID and ES_API_KEY:
@@ -42,53 +35,68 @@ def _make_es_client() -> AsyncElasticsearch:
 
 es = _make_es_client()
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Static stars.json ─────────────────────────────────────────────────────────
+_stars_path = os.path.join(os.path.dirname(__file__), '..', 'pipeline', 'stars.json')
 
-@app.get("/health")
-async def health():
-    try:
-        info = await es.info()
-        return {"status": "ok", "es_version": info["version"]["number"]}
-    except Exception as e:
-        return {"status": "degraded", "error": str(e)}
+@app.get("/stars.json")
+async def stars_json():
+    if os.path.exists(_stars_path):
+        return FileResponse(_stars_path, media_type="application/json")
+    raise HTTPException(status_code=404, detail="stars.json not yet generated — run the pipeline first")
 
+# ── Route factory — registers each route at both /xxx and /api/xxx ────────────
+# This means old cached JS (calling /health) and new JS (calling /api/health)
+# both work without a hard refresh.
 
-@app.get("/search", response_model=SearchResponse)
-async def search(
-    q:       str           = Query(..., description="Search query"),
-    size:    int           = Query(20, ge=1, le=100),
-    cluster: Optional[str] = Query(None, description="Filter by cluster ID"),
-):
-    try:
-        total, results = await es_search.text_search(es, q, size=size, cluster=cluster)
-        return SearchResponse(total=total, results=results, query=q)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def _make_router(prefix: str) -> APIRouter:
+    router = APIRouter(prefix=prefix)
 
+    @router.get("/health")
+    async def health():
+        try:
+            info = await es.info()
+            return {"status": "ok", "es_version": info["version"]["number"]}
+        except Exception as e:
+            return {"status": "degraded", "error": str(e)}
 
-@app.get("/stars")
-async def stars(cluster: Optional[str] = Query(None)):
-    """All star positions for the galaxy. Frontend calls this once on load."""
-    try:
-        data = await es_search.get_all_stars(es, cluster=cluster)
-        return {"count": len(data), "stars": [s.dict() for s in data]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    @router.get("/search", response_model=SearchResponse)
+    async def search(
+        q:       str           = Query(..., description="Search query"),
+        size:    int           = Query(20, ge=1, le=100),
+        cluster: Optional[str] = Query(None),
+    ):
+        try:
+            total, results = await es_search.text_search(es, q, size=size, cluster=cluster)
+            return SearchResponse(total=total, results=results, query=q)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
+    @router.get("/stars")
+    async def stars_dynamic(cluster: Optional[str] = Query(None)):
+        """Live star list from ES — always reflects the full current index."""
+        try:
+            data = await es_search.get_all_stars(es, cluster=cluster)
+            return [s.dict() for s in data]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/paper/{paper_id}", response_model=PaperDetail)
-async def paper(paper_id: str):
-    """Full paper detail + kNN similar papers."""
-    result = await es_search.get_paper_with_similar(es, paper_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    return result
+    # {paper_id:path} lets arxiv URLs like http://arxiv.org/abs/xxx work as IDs
+    @router.get("/paper/{paper_id:path}", response_model=PaperDetail)
+    async def paper(paper_id: str):
+        result = await es_search.get_paper_with_similar(es, paper_id)
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Paper not found: {paper_id}")
+        return result
 
+    @router.get("/stats")
+    async def stats():
+        try:
+            return await es_search.get_cluster_stats(es)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/stats")
-async def stats():
-    """Cluster breakdown for the legend."""
-    try:
-        return await es_search.get_cluster_stats(es)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return router
+
+# Register routes at both / and /api/ so old and new frontend files both work
+app.include_router(_make_router(prefix=""))
+app.include_router(_make_router(prefix="/api"))

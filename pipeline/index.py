@@ -2,12 +2,11 @@
 search-comete — pipeline/index.py
 Bulk-index processed papers into Elasticsearch.
 """
-
 import uuid
 import numpy as np
 from elasticsearch import Elasticsearch, helpers
 
-INDEX = "knowledge_galaxy"
+INDEX      = "knowledge_galaxy"
 EMBED_DIMS = 384
 
 MAPPING = {
@@ -23,11 +22,9 @@ MAPPING = {
             "cluster_id":     {"type": "keyword"},
             "cluster_label":  {"type": "keyword"},
             "cluster_color":  {"type": "keyword"},
-            # Pre-computed 3D position from UMAP — used directly by Three.js
             "pos_x":          {"type": "float"},
             "pos_y":          {"type": "float"},
             "pos_z":          {"type": "float"},
-            # Full embedding for kNN semantic search
             "embedding": {
                 "type":       "dense_vector",
                 "dims":       EMBED_DIMS,
@@ -55,21 +52,47 @@ def setup_index(es: Elasticsearch, recreate: bool = True):
     es.indices.create(index=INDEX, body=MAPPING)
 
 
+def _normalize_authors(authors_field) -> str:
+    """
+    Handle authors coming in as either:
+      - list of dicts:  [{"name": "Alice"}, {"name": "Bob"}]  (Semantic Scholar)
+      - plain string:   "Alice, Bob, Carol"                    (arXiv after fix)
+      - list of str:    ["Alice", "Bob"]                       (edge case)
+    Always returns a comma-joined string of at most 5 names.
+    """
+    if not authors_field:
+        return ""
+    if isinstance(authors_field, str):
+        # Already a string — just clean it up and limit to 5 names
+        names = [n.strip() for n in authors_field.split(",") if n.strip()]
+        return ", ".join(names[:5])
+    if isinstance(authors_field, list):
+        names = []
+        for a in authors_field:
+            if isinstance(a, dict):
+                names.append(a.get("name") or a.get("author") or "")
+            elif isinstance(a, str):
+                names.append(a)
+        names = [n.strip() for n in names if n.strip()]
+        return ", ".join(names[:5])
+    return str(authors_field)
+
+
 def build_docs(
-    papers:       list[dict],
-    cluster_infos:list[dict],
-    embeddings:   np.ndarray,
-    coords_3d:    np.ndarray,
+    papers:        list[dict],
+    cluster_infos: list[dict],
+    embeddings:    np.ndarray,
+    coords_3d:     np.ndarray,
 ) -> list[dict]:
     """Assemble Elasticsearch documents from all pipeline outputs."""
     docs = []
     for i, (paper, cl) in enumerate(zip(papers, cluster_infos)):
-        author_names = [a.get("name", "") for a in (paper.get("authors") or [])]
         docs.append({
             "id":            paper.get("paperId") or str(uuid.uuid4()),
             "title":         paper.get("title", ""),
             "abstract":      (paper.get("abstract") or "")[:2000],
-            "authors":       ", ".join(author_names[:5]),
+            # FIX: authors can be a string OR a list[dict] depending on source
+            "authors":       _normalize_authors(paper.get("authors")),
             "year":          paper.get("year") or 0,
             "citations":     paper.get("citationCount") or 0,
             "venue":         paper.get("venue") or "",
