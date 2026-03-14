@@ -18,6 +18,7 @@
  *  - PIN AS STAR button in detail panel
  *  - Warp overlay
  *  - Grouped legend with all 15 clusters
+ *  - Comets: periodic AI-selected papers fly across the galaxy (click to investigate)
  */
 
 import {
@@ -28,11 +29,23 @@ import {
   flyToCluster,
   getRemappedPos,
   CLUSTER_COLORS,
-  setActiveYear
+  setActiveYear,
 } from './galaxy.js';
+
+// COMET ADDITION: these four functions need to be added to galaxy.js (see galaxy-comet-patch.md).
+// Imported dynamically so the app still boots if galaxy.js hasn't been patched yet.
+let getScene, getCamera, getRaycaster, registerFrameHook;
+import('./galaxy.js').then(mod => {
+  getScene           = mod.getScene;
+  getCamera          = mod.getCamera;
+  getRaycaster       = mod.getRaycaster;
+  registerFrameHook  = mod.registerFrameHook;
+});
 import { doSearch, setSearchCorpus } from './search.js';
 import { showDetail, closeDetail, setCorpus } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
+// COMET ADDITION: import the comet module
+import { initComets, tickComets, raycastComets, updateCorpus as updateCometCorpus } from './comet.js';
 
 // ── Inject UI HTML ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
@@ -630,13 +643,35 @@ function _buildLegend(stars) {
   );
 }
 
+// ── COMET ADDITION: click handler ─────────────────────────────────────────────
+
+function _onCometClick(comet) {
+  if (!comet.paper) {
+    // Paper still resolving from API — show brief waiting message and retry
+    const toast = document.getElementById('comet-toast');
+    if (toast) {
+      toast.textContent = '⟳ ANALYSING COMET TRAJECTORY…';
+      toast.classList.add('show');
+    }
+    setTimeout(() => { if (comet.paper) _onCometClick(comet); }, 800);
+    return;
+  }
+  const paper = comet.paper;
+  console.log(`[comets] Clicked — opening: "${paper.title}"`);
+  const scenePos = getRemappedPos(paper.id);
+  if (scenePos) flyToCluster(scenePos);
+  highlightStars([paper.id]);
+  setTimeout(() => showDetail(paper), 500);
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
 
   buildMeteorFact(stars);
 
-  // Set up Time Travel year slider
   const years = stars.map(s => Number(s.year)).filter(Number.isFinite);
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
@@ -669,4 +704,37 @@ loadStars().then(stars => {
 
   // Rebuild legend after initGalaxy so CLUSTER_COLORS is populated
   requestAnimationFrame(() => _buildLegend(stars));
+
+  // ── COMET ADDITION: initialise comet system ───────────────────────────────
+  const canvas  = document.getElementById('canvas');
+  const scene   = getScene?.();
+  const camera  = getCamera?.();
+
+  if (scene && camera) {
+    initComets(scene, camera, stars, _onCometClick);
+
+    // Tick comets every frame via galaxy's frame hook
+    registerFrameHook?.(delta => tickComets(delta));
+
+    // Comet click detection — runs after galaxy's own click handler
+    canvas.addEventListener('click', () => {
+      const raycaster = getRaycaster?.();
+      if (!raycaster) return;
+      const hit = raycastComets(raycaster);
+      if (hit) _onCometClick(hit);
+    });
+
+    updateCometCorpus(stars);
+    console.log('[main] Comet system active ✓');
+  } else {
+    console.warn(
+      '[main] Comet system disabled — add these exports to galaxy.js:\n' +
+      '  export function getScene()     { return scene; }\n' +
+      '  export function getCamera()    { return camera; }\n' +
+      '  export function getRaycaster() { return raycaster; }\n' +
+      '  export function registerFrameHook(fn) { _frameHooks.push(fn); }\n' +
+      'And in _animate(): _frameHooks.forEach(fn => fn(delta)); (where delta = clock.getDelta())'
+    );
+  }
+  // ── END COMET ADDITION ────────────────────────────────────────────────────
 });

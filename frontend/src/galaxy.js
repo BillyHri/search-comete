@@ -122,8 +122,19 @@ const dummy       = new THREE.Object3D();
 const _col        = new THREE.Color();
 const _floatDummy = new THREE.Object3D();
 
+// ── COMET ADDITION 1: frame hook registry ─────────────────────────────────────
+const _frameHooks = [];
+export function registerFrameHook(fn) { _frameHooks.push(fn); }
+// ── END COMET ADDITION 1 ──────────────────────────────────────────────────────
+
 const _remappedPos = {};
 export function getRemappedPos(id) { return _remappedPos[String(id)]; }
+
+// ── COMET ADDITION 2: scene/camera/raycaster getters ─────────────────────────
+export function getScene()     { return scene; }
+export function getCamera()    { return camera; }
+export function getRaycaster() { return raycaster; }
+// ── END COMET ADDITION 2 ──────────────────────────────────────────────────────
 
 function _isYearVisible(star) {
   if (!Number.isFinite(activeYear)) return true;
@@ -699,7 +710,12 @@ const clock = new THREE.Clock();
 
 function _animate() {
   animFrame = requestAnimationFrame(_animate);
-  t += clock.getDelta();
+
+  // ── COMET ADDITION 3: named delta so frame hooks receive it ────────────────
+  const delta = clock.getDelta();
+  t += delta;
+  _frameHooks.forEach(fn => fn(delta));
+  // ── END COMET ADDITION 3 ──────────────────────────────────────────────────
 
   if (autoRotate && !isDragging) tgtTheta += 0.0006;
 
