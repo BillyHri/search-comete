@@ -21,18 +21,29 @@ import { showDetail } from './panel.js';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PREFERRED_COLORS = {
-  ml: 0x7c6dfa, bio: 0x3dd9a4, phys: 0xfa8c4f, cs: 0x5ab4f5,
-  math: 0xf06ba8, chem: 0xf9c74f, econ: 0x90e0ef, env: 0x52b788, med: 0xe63946,
-  machine_learning: 0x7c6dfa, 'machine learning': 0x7c6dfa, machinelearning: 0x7c6dfa,
-  deep_learning: 0x7c6dfa, nlp: 0x7c6dfa, ai: 0x7c6dfa,
-  biology: 0x3dd9a4, bioinformatics: 0x3dd9a4, genomics: 0x3dd9a4,
-  physics: 0xfa8c4f, astrophysics: 0xfa8c4f, quantum: 0xfa8c4f,
-  computer_science: 0x5ab4f5, 'computer science': 0x5ab4f5, systems: 0x5ab4f5,
-  mathematics: 0xf06ba8, statistics: 0xf06ba8,
-  chemistry: 0xf9c74f, materials: 0xf9c74f,
-  economics: 0x90e0ef, finance: 0x90e0ef,
-  environment: 0x52b788, environmental: 0x52b788, ecology: 0x52b788,
-  medicine: 0xe63946, medical: 0xe63946, healthcare: 0xe63946, clinical: 0xe63946,
+  // Short cluster IDs (from pipeline)
+  ml:    0x7c6dfa, cs:    0x5ab4f5, math:  0xf06ba8,
+  phys:  0xfa8c4f, astro: 0x60a5fa, chem:  0xf9c74f,
+  bio:   0x3dd9a4, neuro: 0x34d399, med:   0xe63946,
+  mat:   0xc084fc, eng:   0xfb923c, env:   0x52b788,
+  econ:  0x90e0ef, psych: 0xf472b6, edu:   0xa3e635,
+  // Full-name variants
+  machine_learning:  0x7c6dfa, 'machine learning': 0x7c6dfa,
+  computer_science:  0x5ab4f5, 'computer science': 0x5ab4f5,
+  mathematics:       0xf06ba8, statistics:          0xf06ba8,
+  physics:           0xfa8c4f, astrophysics:        0x60a5fa,
+  astronomy:         0x60a5fa, chemistry:           0xf9c74f,
+  biology:           0x3dd9a4, bioinformatics:      0x3dd9a4,
+  neuroscience:      0x34d399, medicine:            0xe63946,
+  materials_science: 0xc084fc, materials:           0xc084fc,
+  engineering:       0xfb923c, environment:         0x52b788,
+  environmental:     0x52b788, ecology:             0x52b788,
+  economics:         0x90e0ef, finance:             0x90e0ef,
+  psychology:        0xf472b6, education:           0xa3e635,
+  // Legacy aliases
+  medical: 0xe63946, healthcare: 0xe63946, clinical: 0xe63946,
+  genomics: 0x3dd9a4, quantum: 0xfa8c4f, systems: 0x5ab4f5,
+  ai: 0x7c6dfa, nlp: 0x7c6dfa,
 };
 
 const AUTO_PALETTE = [
