@@ -14,7 +14,7 @@
  */
 
 import { initGalaxy, highlightStars, clearHighlights, flyTo, flyToCluster, getRemappedPos, CLUSTER_COLORS } from './galaxy.js';
-import { doSearch }    from './search.js';
+import { doSearch, setSearchCorpus } from './search.js';
 import { showDetail, closeDetail } from './panel.js';
 import { FALLBACK_PAPERS } from './data.js';
 
@@ -220,18 +220,35 @@ async function triggerSearch() {
   }
 
   const label = document.getElementById('results-label');
-  label.textContent = `${results.length} PAPERS FOUND — FLYING TO CLUSTER`;
+  label.textContent = `${results.length} PAPERS FOUND`;
   label.classList.add('show');
   setTimeout(() => label.classList.remove('show'), 2500);
 
+  // Highlight all matching stars using their scene IDs
   highlightStars(results.map(r => r.id));
 
+  // Fly to the top result.
+  // IMPORTANT: always use getRemappedPos() — this returns the actual Three.js
+  // scene coordinates after UMAP + _remapStars(). The x/y/z on the result
+  // object are raw UMAP coords which do NOT match scene positions.
   const top = results[0];
-  const remapped = getRemappedPos(top.id);
-  if (remapped) {
-    flyToCluster(remapped);
-  } else if (top.x !== undefined) {
-    flyToCluster({ x: top.x, y: top.y, z: top.z });
+  const scenePos = getRemappedPos(top.id);
+  if (scenePos) {
+    flyToCluster(scenePos);
+    console.log(`[search] Flying to "${top.title}" at scene pos`, scenePos);
+  } else {
+    // No scene pos — this result isn't in the loaded galaxy data.
+    // Fall back to flying to the centroid of the top result's cluster.
+    console.warn(`[search] No scene pos for id=${top.id}, trying cluster centroid`);
+    const clusterResults = results.filter(r => r.cluster === top.cluster);
+    let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+    clusterResults.forEach(r => {
+      const p = getRemappedPos(r.id);
+      if (p) { sumX += p.x; sumY += p.y; sumZ += p.z; count++; }
+    });
+    if (count > 0) {
+      flyToCluster({ x: sumX/count, y: sumY/count, z: sumZ/count });
+    }
   }
 
   setTimeout(() => showDetail(top), 600);
@@ -341,40 +358,115 @@ async function loadStars() {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
-const CLUSTER_LABELS = {
-  ml:'MACHINE LEARNING', bio:'BIOLOGY', phys:'PHYSICS', cs:'COMPUTER SCIENCE',
-  math:'MATHEMATICS', chem:'CHEMISTRY', econ:'ECONOMICS', env:'ENVIRONMENT', med:'MEDICINE',
-  machine_learning:'MACHINE LEARNING', biology:'BIOLOGY', physics:'PHYSICS',
-  computer_science:'COMPUTER SCIENCE', mathematics:'MATHEMATICS', chemistry:'CHEMISTRY',
-  economics:'ECONOMICS', environment:'ENVIRONMENT', medicine:'MEDICINE',
+// Full label map for all 15 clusters + all pipeline variants
+const CLUSTER_META = {
+  // id          label                    group
+  ml:    { label: 'Machine Learning',  group: 'AI & Computing'   },
+  cs:    { label: 'Computer Science',  group: 'AI & Computing'   },
+  math:  { label: 'Mathematics',       group: 'Formal Sciences'  },
+  phys:  { label: 'Physics',           group: 'Natural Sciences' },
+  astro: { label: 'Astronomy',         group: 'Natural Sciences' },
+  chem:  { label: 'Chemistry',         group: 'Natural Sciences' },
+  bio:   { label: 'Biology',           group: 'Life Sciences'    },
+  neuro: { label: 'Neuroscience',      group: 'Life Sciences'    },
+  med:   { label: 'Medicine',          group: 'Life Sciences'    },
+  mat:   { label: 'Materials Science', group: 'Natural Sciences' },
+  eng:   { label: 'Engineering',       group: 'Applied Sciences' },
+  env:   { label: 'Environment',       group: 'Applied Sciences' },
+  econ:  { label: 'Economics',         group: 'Social Sciences'  },
+  psych: { label: 'Psychology',        group: 'Social Sciences'  },
+  edu:   { label: 'Education',         group: 'Social Sciences'  },
+  // pipeline full-name variants
+  machine_learning:  { label: 'Machine Learning',  group: 'AI & Computing'   },
+  computer_science:  { label: 'Computer Science',  group: 'AI & Computing'   },
+  mathematics:       { label: 'Mathematics',       group: 'Formal Sciences'  },
+  physics:           { label: 'Physics',           group: 'Natural Sciences' },
+  astronomy:         { label: 'Astronomy',         group: 'Natural Sciences' },
+  chemistry:         { label: 'Chemistry',         group: 'Natural Sciences' },
+  biology:           { label: 'Biology',           group: 'Life Sciences'    },
+  neuroscience:      { label: 'Neuroscience',      group: 'Life Sciences'    },
+  medicine:          { label: 'Medicine',          group: 'Life Sciences'    },
+  materials_science: { label: 'Materials Science', group: 'Natural Sciences' },
+  engineering:       { label: 'Engineering',       group: 'Applied Sciences' },
+  environment:       { label: 'Environment',       group: 'Applied Sciences' },
+  economics:         { label: 'Economics',         group: 'Social Sciences'  },
+  psychology:        { label: 'Psychology',        group: 'Social Sciences'  },
+  education:         { label: 'Education',         group: 'Social Sciences'  },
 };
+
+function _getClusterMeta(id) {
+  return CLUSTER_META[id] || CLUSTER_META[id?.toLowerCase()] || {
+    label: (id || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    group: 'Other',
+  };
+}
+
+function _buildLegend(stars) {
+  const clusterIds = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
+  const legend = document.getElementById('legend');
+
+  // Group clusters by their parent group
+  const groups = {};
+  clusterIds.forEach(id => {
+    const meta = _getClusterMeta(id);
+    if (!groups[meta.group]) groups[meta.group] = [];
+    groups[meta.group].push(id);
+  });
+
+  // Keep ALL row, clear rest
+  const allRow = legend.querySelector('[data-cluster="all"]');
+  legend.innerHTML = '';
+  if (allRow) legend.appendChild(allRow);
+
+  // Add CSS for subgroups if not already added
+  if (!document.getElementById('legend-subgroup-style')) {
+    const s = document.createElement('style');
+    s.id = 'legend-subgroup-style';
+    s.textContent = `
+      .legend-group-header {
+        font-family: var(--mono); font-size: 8px; letter-spacing: 0.18em;
+        color: rgba(245,242,235,0.2); text-transform: uppercase;
+        margin-top: 10px; margin-bottom: 2px; padding-left: 15px;
+        pointer-events: none; user-select: none;
+      }
+      .legend-group-header:first-of-type { margin-top: 6px; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Render grouped legend
+  const groupOrder = ['AI & Computing','Formal Sciences','Natural Sciences','Life Sciences','Applied Sciences','Social Sciences','Other'];
+  groupOrder.forEach(groupName => {
+    const ids = groups[groupName];
+    if (!ids || !ids.length) return;
+
+    const header = document.createElement('div');
+    header.className = 'legend-group-header';
+    header.textContent = groupName;
+    legend.appendChild(header);
+
+    ids.forEach(id => {
+      const meta    = _getClusterMeta(id);
+      const colorHex = CLUSTER_COLORS[id];
+      const hex      = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : '#888888';
+      const row      = document.createElement('div');
+      row.className  = 'legend-row';
+      row.dataset.cluster = id;
+      row.innerHTML  = `<div class="legend-dot" style="background:${hex}"></div>${meta.label.toUpperCase()}`;
+      legend.appendChild(row);
+    });
+  });
+
+  console.log('[main] Legend built —', Object.keys(groups).map(g => `${g}: ${groups[g].join(',')}`).join(' | '));
+}
 
 loadStars().then(stars => {
   initGalaxy(document.getElementById('canvas'), stars);
   document.getElementById('star-count').textContent = `${stars.length} PAPERS INDEXED`;
 
-  // FIX: Rebuild legend AFTER initGalaxy() so CLUSTER_COLORS is populated.
-  // Use a short rAF delay to let _discoverClusters() finish synchronously inside initGalaxy.
-  requestAnimationFrame(() => {
-    const clusterNames = [...new Set(stars.map(s => s.cluster).filter(Boolean))].sort();
-    const legend = document.getElementById('legend');
+  // Give the corpus to search.js so it can build its inverted index
+  setSearchCorpus(stars);
 
-    // Keep the ALL row, remove any stale rows
-    const allRow = legend.querySelector('[data-cluster="all"]');
-    legend.innerHTML = '';
-    if (allRow) legend.appendChild(allRow);
-
-    clusterNames.forEach(name => {
-      const colorHex = CLUSTER_COLORS[name];
-      const hex = colorHex ? '#' + colorHex.toString(16).padStart(6, '0') : '#888888';
-      const label = CLUSTER_LABELS[name.toLowerCase()] || name.toUpperCase().replace(/_/g, ' ');
-      const row = document.createElement('div');
-      row.className = 'legend-row';
-      row.dataset.cluster = name;
-      row.innerHTML = `<div class="legend-dot" style="background:${hex}"></div>${label}`;
-      legend.appendChild(row);
-    });
-
-    console.log('[main] Legend built for clusters:', clusterNames);
-  });
+  // Rebuild legend after initGalaxy so CLUSTER_COLORS is populated
+  requestAnimationFrame(() => _buildLegend(stars));
 });
