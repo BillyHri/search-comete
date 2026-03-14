@@ -57,7 +57,7 @@ const DEFAULT_COLOR = 0x8888aa;
 export const CLUSTER_COLORS = {};
 let CLUSTER_ANCHORS = {};
 
-function _spherePositions(n, radius = 45) {
+function _spherePositions(n, radius = 80) {
   const positions = [], golden = (1 + Math.sqrt(5)) / 2;
   for (let i = 0; i < n; i++) {
     const theta = Math.acos(1 - 2 * (i + 0.5) / n);
@@ -106,8 +106,8 @@ let animFrame;
 
 const pivot       = new THREE.Vector3(0, 0, 0);
 const pivotTarget = new THREE.Vector3(0, 0, 0);
-let camTheta = 0, camPhi = 1.3,  camR = 140;
-let tgtTheta = 0, tgtPhi = 1.3, tgtR = 140;
+let camTheta = 0, camPhi = 1.3,  camR = 220;
+let tgtTheta = 0, tgtPhi = 1.3, tgtR = 220;
 
 let isDragging = false, lastMX = 0, lastMY = 0, mouseMoved = false;
 let autoRotate = true;
@@ -151,7 +151,7 @@ export function initGalaxy(canvas, stars) {
   renderer.setClearColor(0x06060f, 1);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x06060f, 0.002);
+  scene.fog = new THREE.FogExp2(0x06060f, 0.0008);
 
   camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 600);
 
@@ -199,7 +199,7 @@ function _remapStars(stars) {
       y0=Math.min(y0,s.y||0); y1=Math.max(y1,s.y||0);
       z0=Math.min(z0,s.z||0); z1=Math.max(z1,s.z||0);
     });
-    const rx=(x1-x0)||1, ry=(y1-y0)||1, rz=(z1-z0)||1, R=7;
+    const rx=(x1-x0)||1, ry=(y1-y0)||1, rz=(z1-z0)||1, R=18;
     members.forEach(s => {
       out.push({
         ...s,
@@ -250,7 +250,7 @@ export function filterCluster(clusterId) {
   clearHighlights();
   if (clusterId === 'all') {
     pivotTarget.set(0, 0, 0);
-    tgtR = 140;
+    tgtR = 220;
     // Restore all stars to full size and edges to normal opacity
     if (edgeSegments) edgeSegments.material.opacity = 0.45;
     starDataArray.forEach(({ tierMesh, localId, globalIdx }) => {
@@ -283,20 +283,20 @@ export function filterCluster(clusterId) {
     const dir = anchor.clone().normalize();
     tgtTheta = Math.atan2(dir.x, dir.z) + 0.3;
     tgtPhi   = Math.acos(Math.max(-1, Math.min(1, dir.y))) * 0.8 + 0.3;
-    tgtR = 12;
+    tgtR = 22;
     _warp();
   }
 }
 
 export function flyTo({ x, y, z }) {
   pivotTarget.set(x, y, z);
-  tgtR = 4;
+  tgtR = 6;
   _warp();
 }
 
 export function flyToCluster({ x, y, z }) {
   pivotTarget.set(x, y, z);
-  tgtR = 10;
+  tgtR = 28;
   const dir = new THREE.Vector3(x, y, z).normalize();
   tgtTheta = Math.atan2(dir.x, dir.z) + 0.4;
   tgtPhi   = Math.acos(Math.max(-1, Math.min(1, dir.y))) * 0.8 + 0.35;
@@ -314,9 +314,9 @@ function _buildBackground() {
   const count = 3000; // reduced from 8000 — big perf win for identical visual result
   const pos = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    pos[i*3]   = (Math.random()-0.5)*400;
-    pos[i*3+1] = (Math.random()-0.5)*400;
-    pos[i*3+2] = (Math.random()-0.5)*400;
+    pos[i*3]   = (Math.random()-0.5)*900;
+    pos[i*3+1] = (Math.random()-0.5)*900;
+    pos[i*3+2] = (Math.random()-0.5)*900;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -333,7 +333,7 @@ function _buildNebulae(stars) {
     const anchor = CLUSTER_ANCHORS[s.cluster];
     if (!anchor) return;
     const color = CLUSTER_COLORS[s.cluster] || DEFAULT_COLOR;
-    scene.add(_makeNebula(color, 9, anchor)); // single nebula per cluster (was two)
+    [22, 12].forEach(sz => scene.add(_makeNebula(color, sz, anchor)));
   });
 }
 
@@ -574,7 +574,7 @@ function _bindControls(canvas) {
   });
 
   window.addEventListener('wheel', e => {
-    tgtR = Math.max(2, Math.min(250, tgtR + e.deltaY * 0.08));
+    tgtR = Math.max(1.5, Math.min(400, tgtR + e.deltaY * 0.12));
     autoRotate = false;
     setTimeout(() => { autoRotate = true; }, 5000);
   }, { passive: true });
@@ -679,7 +679,7 @@ function _animateFloats() {
   // Only animate stars within ~60 units of the camera pivot (visible cluster)
   // Stars far away are invisible at normal zoom so no need to update them
   const px = pivot.x, py = pivot.y, pz = pivot.z;
-  const DIST2 = 65 * 65; // squared distance threshold
+  const DIST2 = 120 * 120; // squared distance threshold — scaled with new cluster size
 
   let nS=false, nM=false, nL=false;
   const b = basePosArray;
