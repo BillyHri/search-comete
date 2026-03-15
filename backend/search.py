@@ -1,5 +1,5 @@
 """
-search-comete — search.py
+search-comete - search.py
 All Elasticsearch query logic, isolated from the FastAPI routes.
 
 Fixes applied:
@@ -59,7 +59,7 @@ async def text_search(
             title      = s["title"],
             authors    = s.get("authors", ""),
             year       = s.get("year"),
-            # FIX: expose as `cite` — frontend uses this field name
+            # FIX: expose as `cite` - frontend uses this field name
             cite       = cite_val,
             citations  = cite_val,
             abstract   = s.get("abstract", ""),
@@ -189,7 +189,7 @@ async def get_paper_with_similar(
                         z       = s.get("pos_z", s.get("z", 0.0)),
                     ))
         except Exception as e:
-            # kNN failed (e.g. index has no embedding field) — return without similar
+            # kNN failed (e.g. index has no embedding field) - return without similar
             print(f"[search] kNN lookup failed for {paper_id}: {e}")
 
     cite_val = src.get("citations", 0) or src.get("cite", 0) or 0

@@ -1,17 +1,17 @@
 /**
- * search-comete — sound.js
+ * search-comete - sound.js
  *
- * Procedural ethereal sound engine — Web Audio API only, zero external files.
+ * Procedural ethereal sound engine - Web Audio API only, zero external files.
  * Toggle: set SOUND_ENABLED = false at the top to silence everything.
  *
  * Public API:
  *   initSound()
- *   playWarp()             — camera fly / cluster travel
- *   playStarClick(cluster) — soft crystalline ping, pitch by cluster
- *   playCometAppear()      — distant chime
- *   playCometClick()       — ascending sweep
- *   playSupernova()        — light mode explosion
- *   playDwarfDeath()       — dark mode implosion
+ *   playWarp()             - camera fly / cluster travel
+ *   playStarClick(cluster) - soft crystalline ping, pitch by cluster
+ *   playCometAppear()      - distant chime
+ *   playCometClick()       - ascending sweep
+ *   playSupernova()        - light mode explosion
+ *   playDwarfDeath()       - dark mode implosion
  *   setAmbient(bool)
  */
 
@@ -46,7 +46,7 @@ function _resume() {
   if (_ctx && _ctx.state === 'suspended') _ctx.resume();
 }
 
-// ── Ambient — subliminal evolving pads ───────────────────────────────────────
+// ── Ambient - subliminal evolving pads ───────────────────────────────────────
 // Slow-moving harmonic intervals (perfect 4ths, 5ths, octaves) that shift
 // imperceptibly over time. Feels like the universe breathing.
 
@@ -60,7 +60,7 @@ export function setAmbient(on) {
 function _startAmbient() {
   const now = _ctx.currentTime;
 
-  // Very quiet pad gain — fades in over 8s
+  // Very quiet pad gain - fades in over 8s
   const padGain = _ctx.createGain();
   padGain.gain.setValueAtTime(0, now);
   padGain.gain.linearRampToValueAtTime(0.008, now + 14.0); // very slow fade, barely there
@@ -79,7 +79,7 @@ function _startAmbient() {
   feedback.connect(delay);
   delay.connect(padGain);
 
-  // Pad layer 1 — root + perfect 5th slowly evolving
+  // Pad layer 1 - root + perfect 5th slowly evolving
   // Notes: A2=110, E3=164.8, A3=220, E4=329.6
   const padFreqs = [110.0, 164.81, 219.9, 329.63];
   const pads = padFreqs.map((f, i) => {
@@ -100,7 +100,7 @@ function _startAmbient() {
     return { o, vib };
   });
 
-  // Pad layer 2 — higher harmonics, barely audible
+  // Pad layer 2 - higher harmonics, barely audible
   const shimmerFreqs = [440.0, 659.26, 880.0];
   const shimmers = shimmerFreqs.map((f, i) => {
     const o = _ctx.createOscillator();
@@ -205,7 +205,7 @@ function _noise(startTime, duration, gainValue, filterFreq, filterType) {
 
 // ── Public sounds ─────────────────────────────────────────────────────────────
 
-// Warp — deep whoosh + faint harmonic shimmer. Only triggered by actual travel.
+// Warp - deep whoosh + faint harmonic shimmer. Only triggered by actual travel.
 export function playWarp() {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();
@@ -233,7 +233,7 @@ export function playWarp() {
   [329.63, 440, 523.25].forEach((f, i) => _sine(f, now + 0.1 + i * 0.08, 0.9, 0.028));
 }
 
-// Star click — soft bell ping, pitch unique per cluster
+// Star click - soft bell ping, pitch unique per cluster
 export function playStarClick(cluster) {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();
@@ -246,7 +246,7 @@ export function playStarClick(cluster) {
   _noise(now, 0.02, 0.012, 6000, 'highpass');
 }
 
-// Comet appear — distant chime, long tail
+// Comet appear - distant chime, long tail
 export function playCometAppear() {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();
@@ -265,7 +265,7 @@ export function playCometAppear() {
   _noise(now + 0.15, 2.0, 0.009, 900, 'bandpass');
 }
 
-// Comet click — ascending shimmer sweep
+// Comet click - ascending shimmer sweep
 export function playCometClick() {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();
@@ -276,7 +276,7 @@ export function playCometClick() {
   _noise(now, 0.2, 0.055, 120, 'lowpass');
 }
 
-// Supernova — bright boom + expanding shimmer (dark→light)
+// Supernova - bright boom + expanding shimmer (dark→light)
 export function playSupernova() {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();
@@ -296,7 +296,7 @@ export function playSupernova() {
   _noise(now + 0.3, 3.0, 0.04, 800, 'bandpass');
 }
 
-// Dwarf death — descending implosion (light→dark)
+// Dwarf death - descending implosion (light→dark)
 export function playDwarfDeath() {
   if (!SOUND_ENABLED) return;
   _ensureCtx(); _resume();

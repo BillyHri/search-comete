@@ -1,11 +1,11 @@
 """
-search-comete — models.py
+search-comete - models.py
 Pydantic models shared across the backend.
 
 Fixes applied:
   1. SearchResult: added `citations` as an alias for `cite` so the frontend
      can always find the field regardless of which name it uses.
-  2. StarPoint: same fix — pipeline data uses `citations`, fallback uses `cite`.
+  2. StarPoint: same fix - pipeline data uses `citations`, fallback uses `cite`.
   3. All models use `populate_by_name=True` so both field names work on input.
 """
 
@@ -68,7 +68,7 @@ class SearchResponse(BaseModel):
 
 
 class StarPoint(BaseModel):
-    """Lightweight star for the galaxy render — no embedding."""
+    """Lightweight star for the galaxy render - no embedding."""
     model_config = {"populate_by_name": True}
 
     id:      str

@@ -1,5 +1,5 @@
 /**
- * search-comete — search.js
+ * search-comete - search.js
  *
  * Search against stars.json data directly (no backend needed).
  * Uses a proper TF-IDF style scorer with title/abstract/cluster weighting.
@@ -13,7 +13,7 @@ const API_BASE = '/api';
 let _backendCheckPromise = null;
 let _usingBackend = null;
 
-// All loaded stars (from stars.json or fallback) — set by main.js after load
+// All loaded stars (from stars.json or fallback) - set by main.js after load
 let _allStars = [];
 export function setSearchCorpus(stars) {
   _allStars = stars;
@@ -57,13 +57,13 @@ function _buildIndex() {
       _index[term].push({ id: String(star.id), score });
     });
   });
-  console.log(`[search] Index built — ${Object.keys(_index).length} terms, ${_allStars.length} documents`);
+  console.log(`[search] Index built - ${Object.keys(_index).length} terms, ${_allStars.length} documents`);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function doSearch(query) {
-  // Try backend first — use promise cache so concurrent calls don't fire multiple health checks
+  // Try backend first - use promise cache so concurrent calls don't fire multiple health checks
   if (_usingBackend === null) {
     if (!_backendCheckPromise) _backendCheckPromise = _checkBackend();
     _usingBackend = await _backendCheckPromise;
@@ -112,7 +112,7 @@ function _localSearch(query) {
   // Score each document
   const scores = {};
 
-  // 1. Index lookup (fast path — pre-built inverted index)
+  // 1. Index lookup (fast path - pre-built inverted index)
   if (_allStars.length > 0) {
     tokens.forEach(tok => {
       // Exact match

@@ -1,14 +1,14 @@
 /**
- * search-comete — comet.js
+ * search-comete - comet.js
  *
- * Periodic comets fly across the 3D galaxy scene. Every 2–4 minutes, the
+ * Periodic comets fly across the 3D galaxy scene. Every 2-4 minutes, the
  * Anthropic API picks a semantically interesting paper from the corpus.
  * Clicking the comet flies the camera to that paper and opens its detail panel.
  *
  * Public API:
  *   initComets(scene, camera, corpus, onCometClick)
- *   tickComets(delta, elapsed)   — call every animation frame
- *   raycastComets(raycaster)     — call on mousemove / click; returns hit or null
+ *   tickComets(delta, elapsed)   - call every animation frame
+ *   raycastComets(raycaster)     - call on mousemove / click; returns hit or null
  *   disposeComets()
  */
 
@@ -30,7 +30,7 @@ let _scene    = null;
 let _camera   = null;
 let _corpus   = [];
 let _onCometClick = null;
-let _setPivot = null; // direct reference to galaxy's setPivotTarget — set at init
+let _setPivot = null; // direct reference to galaxy's setPivotTarget - set at init
 
 // Recently-clicked paper IDs to avoid repeats
 const _recentIds = [];
@@ -52,8 +52,8 @@ export function stopCometTracking() { _trackedComet = null; }
 /**
  * @param {THREE.Scene}    scene
  * @param {THREE.Camera}   camera
- * @param {Array}          corpus   — full star array from main.js
- * @param {Function}       onCometClick(paper) — called when user clicks a comet
+ * @param {Array}          corpus   - full star array from main.js
+ * @param {Function}       onCometClick(paper) - called when user clicks a comet
  */
 export function initComets(scene, camera, corpus, onCometClick, setPivot) {
   _scene        = scene;
@@ -62,7 +62,7 @@ export function initComets(scene, camera, corpus, onCometClick, setPivot) {
   _onCometClick = onCometClick;
   _setPivot     = setPivot || null;
   _scheduleNext();
-  console.log('[comets] Initialised — first comet in', _msUntilNext().toFixed(0), 'ms');
+  console.log('[comets] Initialised - first comet in', _msUntilNext().toFixed(0), 'ms');
 }
 
 export function updateCorpus(corpus) {
@@ -136,7 +136,7 @@ function _scheduleNext() {
 // ── Spawn a comet ─────────────────────────────────────────────────────────────
 
 async function _spawnComet() {
-  // 1. Pick paper (async — comet visuals launch immediately with a placeholder)
+  // 1. Pick paper (async - comet visuals launch immediately with a placeholder)
   const paperPromise = _pickPaper();
 
   // 2. Random trajectory across the scene
@@ -164,7 +164,7 @@ async function _spawnComet() {
   const group = new THREE.Group();
   _scene.add(group);
 
-  // Head — glowing sphere
+  // Head - glowing sphere
   const headGeo = new THREE.SphereGeometry(0.55, 10, 10);
   const headMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 });
   const head    = new THREE.Mesh(headGeo, headMat);
@@ -175,7 +175,7 @@ async function _spawnComet() {
   glowSprite.scale.setScalar(4.5);
   group.add(glowSprite);
 
-  // Tail — tube made of many billboard quads so it has real thickness when zoomed in.
+  // Tail - tube made of many billboard quads so it has real thickness when zoomed in.
   // We use a line of CylinderGeometry segments oriented along the path each frame,
   // but the simplest visible-at-any-zoom approach is a Points cloud along the trail
   // with sizeAttenuation:false so dots stay a fixed screen size regardless of zoom.
@@ -188,7 +188,7 @@ async function _spawnComet() {
   // sizeAttenuation false = constant screen-space size regardless of zoom depth
   const tailDotMat = new THREE.PointsMaterial({
     vertexColors: true,
-    size: 3.5,               // pixels — visible at any zoom
+    size: 3.5,               // pixels - visible at any zoom
     sizeAttenuation: false,  // KEY: constant screen size
     transparent: true,
     opacity: 1.0,
@@ -265,7 +265,7 @@ function _updateComet(c) {
   c.group.position.copy(pos);
   c.hitSphere.position.copy(pos);
 
-  // Store every frame — no subsampling, so history is always dense
+  // Store every frame - no subsampling, so history is always dense
   // and the tail never disappears due to a minimum-distance threshold
   c.posHistory.unshift(pos.clone());
   if (c.posHistory.length > TAIL_POINTS) c.posHistory.pop();
@@ -275,7 +275,7 @@ function _updateComet(c) {
   const cb = (c.color & 255) / 255;
   const drawN = Math.min(c.posHistory.length, TAIL_DRAW);
 
-  // Update dot trail (screen-space fixed size — visible at any zoom)
+  // Update dot trail (screen-space fixed size - visible at any zoom)
   const dotPos = c.tailDotGeo.attributes.position;
   const dotCol = c.tailDotGeo.attributes.color;
   for (let i = 0; i < TAIL_POINTS; i++) {
@@ -344,17 +344,17 @@ function _destroyComet(c) {
   c.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
 }
 
-// ── Paper picking — smart local scoring ──────────────────────────────────────
+// ── Paper picking - smart local scoring ──────────────────────────────────────
 //
 // Scores each paper on several signals to find genuinely interesting picks:
-//  1. Citation impact    — landmark papers score higher
-//  2. Cross-cluster rarity — papers whose title tokens appear across many
+//  1. Citation impact    - landmark papers score higher
+//  2. Cross-cluster rarity - papers whose title tokens appear across many
 //                            different clusters score higher (interdisciplinary)
-//  3. Cluster rotation   — down-weights clusters seen in recent picks so
+//  3. Cluster rotation   - down-weights clusters seen in recent picks so
 //                          comets tour the whole galaxy over time
-//  4. Recency variety    — slight preference for older AND newer papers
+//  4. Recency variety    - slight preference for older AND newer papers
 //                          (avoids always picking the same era)
-//  5. Randomness jitter  — small noise so every comet feels fresh
+//  5. Randomness jitter  - small noise so every comet feels fresh
 
 async function _pickPaper() {
   if (!_corpus.length) return _localPick();
@@ -383,11 +383,11 @@ function _localPick() {
   const scored = pool.map(p => {
     let score = 0;
 
-    // 1. Citation impact — log scale so ultra-cited don't dominate completely
+    // 1. Citation impact - log scale so ultra-cited don't dominate completely
     const cite = p.cite ?? 0;
     score += Math.log10(cite + 1) * 18;
 
-    // 2. Cross-disciplinarity — how many clusters share tokens with this title
+    // 2. Cross-disciplinarity - how many clusters share tokens with this title
     const tokens = _tokeniseTitle(p.title);
     let crossCount = 0;
     tokens.forEach(tok => {
@@ -396,10 +396,10 @@ function _localPick() {
     });
     score += crossCount * 6;
 
-    // 3. Cluster rotation — penalise recently-seen clusters
+    // 3. Cluster rotation - penalise recently-seen clusters
     if (recentClusters.has(p.cluster)) score -= 40;
 
-    // 4. Recency variety — mild preference for papers not from the median year
+    // 4. Recency variety - mild preference for papers not from the median year
     const medianYear = 2015;
     const yearDist = Math.abs((p.year || medianYear) - medianYear);
     score += yearDist * 0.4;
@@ -431,7 +431,7 @@ function _buildCrossClusterMap(corpus) {
   return map;
 }
 
-// Strip HTML/MathML tags — some OpenAlex titles contain raw <mml:math> markup
+// Strip HTML/MathML tags - some OpenAlex titles contain raw <mml:math> markup
 // which pollutes the cross-cluster scorer if not removed first.
 function _stripHtml(str) {
   return (str || '')
@@ -506,7 +506,7 @@ function _showCometToast(comet) {
   toast = fresh;
   // Re-apply styles (cloneNode copies the id so the CSS still applies)
 
-  toast.textContent = '✦ COMET DETECTED — CLICK TO INVESTIGATE';
+  toast.textContent = '✦ COMET DETECTED - CLICK TO INVESTIGATE';
   toast.classList.add('show');
 
   // Clicking the toast: fly camera to comet's current 3D position, then fire callback
@@ -518,7 +518,7 @@ function _showCometToast(comet) {
       window.dispatchEvent(new CustomEvent('comet:flyto', {
         detail: { x: pos.x, y: pos.y, z: pos.z }
       }));
-      // Start per-frame tracking — _setPivot is called every tick from now on
+      // Start per-frame tracking - _setPivot is called every tick from now on
       _trackedComet = comet;
       if (_onCometClick) _onCometClick(comet);
     }

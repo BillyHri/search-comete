@@ -1,5 +1,5 @@
 /**
- * search-comete — main.js
+ * search-comete - main.js
  * Entry point. Injects the UI shell then initialises galaxy, search, and panel.
  *
  * Fixes applied:
@@ -327,7 +327,7 @@ document.querySelectorAll('.chip').forEach(chip => {
 
 document.getElementById('detail-close').addEventListener('click', closeDetail);
 
-// Legend: delegate — rows added dynamically after galaxy loads
+// Legend: delegate - rows added dynamically after galaxy loads
 document.getElementById('legend').addEventListener('click', e => {
   const row = e.target.closest('.legend-row');
   if (!row) return;
@@ -365,7 +365,7 @@ async function triggerSearch() {
   highlightStars(results.map(r => r.id));
 
   // Fly to the top result.
-  // IMPORTANT: always use getRemappedPos() — this returns the actual Three.js
+  // IMPORTANT: always use getRemappedPos() - this returns the actual Three.js
   // scene coordinates after UMAP + _remapStars(). The x/y/z on the result
   // object are raw UMAP coords which do NOT match scene positions.
   const top = results[0];
@@ -374,7 +374,7 @@ async function triggerSearch() {
     flyToCluster(scenePos);
     console.log(`[search] Flying to "${top.title}" at scene pos`, scenePos);
   } else {
-    // No scene pos — this result isn't in the loaded galaxy data.
+    // No scene pos - this result isn't in the loaded galaxy data.
     // Fall back to flying to the centroid of the top result's cluster.
     console.warn(`[search] No scene pos for id=${top.id}, trying cluster centroid`);
     const clusterResults = results.filter(r => r.cluster === top.cluster);
@@ -447,7 +447,7 @@ async function loadStars() {
           console.groupEnd();
           return stars;
         }
-        console.warn(`  ⚠ only ${nc} cluster(s), need ${MIN_CLUSTERS} — skipping API`);
+        console.warn(`  ⚠ only ${nc} cluster(s), need ${MIN_CLUSTERS} - skipping API`);
       } else {
         console.warn('  ⚠ empty array from API');
       }
@@ -477,7 +477,7 @@ async function loadStars() {
           console.groupEnd();
           return stars;
         }
-        console.warn(`  ⚠ only ${nc} cluster(s) in stars.json, need ${MIN_CLUSTERS} — falling to bundled`);
+        console.warn(`  ⚠ only ${nc} cluster(s) in stars.json, need ${MIN_CLUSTERS} - falling to bundled`);
       } else {
         console.warn('  ⚠ stars.json parsed but array is empty or null');
         console.log('  raw data type:', typeof data, Array.isArray(data) ? '(array)' : '(object)', 'keys:', data ? Object.keys(data).join(', ') : 'null');
@@ -487,7 +487,7 @@ async function loadStars() {
     console.warn('  ✗ /stars.json failed:', e.message);
   }
 
-  // 3. Bundled fallback — always has all clusters
+  // 3. Bundled fallback - always has all clusters
   console.info('③ Using bundled FALLBACK_PAPERS');
   console.groupEnd();
   return FALLBACK_PAPERS;
@@ -642,15 +642,15 @@ function _buildLegend(stars) {
   });
 
   console.log(
-    '[main] Legend built —',
+    '[main] Legend built -',
     Object.keys(groups).map(g => `${g}: ${groups[g].join(',')}`).join(' | ')
   );
 }
 
 // ── COMET ADDITION: click handler ─────────────────────────────────────────────
 
-// comet:flyto — initial jump when user clicks the toast.
-// Use flyToCluster (tgtR=28) not flyTo (tgtR=6) — we need to stay far enough
+// comet:flyto - initial jump when user clicks the toast.
+// Use flyToCluster (tgtR=28) not flyTo (tgtR=6) - we need to stay far enough
 // back that the full comet tail is visible in the camera frustum.
 // setPivotTarget then takes over every frame and holds tgtR=45.
 window.addEventListener('comet:flyto', e => {
@@ -671,8 +671,8 @@ function _onCometClick(comet) {
   const paper = { ...comet.paper };
   // Strip MathML/HTML from the title so the detail panel never shows raw XML
   paper.title = cleanTitle(paper.title);
-  console.log(`[comets] Clicked — opening: "${paper.title}"`);
-  // Open the detail panel — no highlightStars call, it's not needed when
+  console.log(`[comets] Clicked - opening: "${paper.title}"`);
+  // Open the detail panel - no highlightStars call, it's not needed when
   // tracking a moving comet and the redraw can interfere with the tail
   setTimeout(() => showDetail(paper), 500);
 }
@@ -729,7 +729,7 @@ loadStars().then(stars => {
     // Tick comets every frame via galaxy's frame hook
     registerFrameHook?.(delta => tickComets(delta));
 
-    // Comet click detection — runs after galaxy's own click handler
+    // Comet click detection - runs after galaxy's own click handler
     canvas.addEventListener('click', () => {
       const raycaster = getRaycaster?.();
       if (!raycaster) return;
@@ -743,7 +743,7 @@ loadStars().then(stars => {
       let _canvasDragArmed = false;
       const cvs = document.getElementById('canvas');
       cvs.addEventListener('mousedown', () => {
-        _canvasDragArmed = true; // armed — if mouse moves now it's a drag
+        _canvasDragArmed = true; // armed - if mouse moves now it's a drag
       });
       window.addEventListener('mouseup', () => {
         _canvasDragArmed = false; // released without dragging = just a click
@@ -764,7 +764,7 @@ loadStars().then(stars => {
     console.log('[main] Comet system active ✓');
   } else {
     console.warn(
-      '[main] Comet system disabled — add these exports to galaxy.js:\n' +
+      '[main] Comet system disabled - add these exports to galaxy.js:\n' +
       '  export function getScene()     { return scene; }\n' +
       '  export function getCamera()    { return camera; }\n' +
       '  export function getRaycaster() { return raycaster; }\n' +
@@ -776,7 +776,7 @@ loadStars().then(stars => {
 
   // ── SOUND + WORMHOLE ADDITIONS ────────────────────────────────────────────
 
-  // Sound — init on first user interaction (browsers require gesture to start AudioContext)
+  // Sound - init on first user interaction (browsers require gesture to start AudioContext)
   const _startSound = () => {
     initSound();
     window.removeEventListener('click', _startSound);
@@ -785,11 +785,11 @@ loadStars().then(stars => {
   window.addEventListener('click', _startSound);
   window.addEventListener('keydown', _startSound);
 
-  // Wire warp sound — only fires when camera actually travels (not every click)
+  // Wire warp sound - only fires when camera actually travels (not every click)
   // galaxy.js dispatches 'galaxy:travel' whenever flyTo/flyToCluster/filterCluster runs
   window.addEventListener('galaxy:travel', () => playWarp());
 
-  // Wire star click sound — listen for detail panel opening
+  // Wire star click sound - listen for detail panel opening
   const _detailObserver = new MutationObserver(() => {
     const panel = document.getElementById('detail-panel');
     if (panel && panel.classList.contains('open')) {
@@ -807,7 +807,7 @@ loadStars().then(stars => {
   window.addEventListener('comet:appeared', () => playCometAppear());
   window.addEventListener('comet:clicked',  () => playCometClick());
 
-  // Wormhole — pass galaxy renderer so it can flip the canvas bg color
+  // Wormhole - pass galaxy renderer so it can flip the canvas bg color
   import('./galaxy.js').then(mod => {
     const rend = mod.getRenderer ? mod.getRenderer() : null;
     initWormhole((newMode) => {

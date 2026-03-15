@@ -1,16 +1,16 @@
 /**
- * search-comete — galaxy.js
+ * search-comete - galaxy.js
  *
  * Fixes applied:
  *  1. _normaliseCite(): stars from the pipeline have `cite:0` but also carry
- *     `citations` — we unify to `cite` before any size bucketing so instanced
+ *     `citations` - we unify to `cite` before any size bucketing so instanced
  *     mesh counts are never wrong.
  *  2. Instanced mesh creation: if ALL stars are cite=0 (common with live API
- *     data), every star goes to instancedSmall. That is fine — but we must
+ *     data), every star goes to instancedSmall. That is fine - but we must
  *     never leave instancedMed / instancedLarge as `null` and then try to
  *     setMatrixAt() on them. Guard added in _buildStars tier assignment.
  *  3. filterCluster 'all' now also restores edge opacity correctly.
- *  4. flyTo / flyToCluster unchanged — they were correct.
+ *  4. flyTo / flyToCluster unchanged - they were correct.
  *  5. CLUSTER_COLORS export made reliable (was exported before _discoverClusters
  *     ran, so importers got an empty object). Now exported as a live reference.
  */
@@ -53,7 +53,7 @@ const AUTO_PALETTE = [
 ];
 const DEFAULT_COLOR = 0x8888aa;
 
-// Live reference — populated in _discoverClusters(), imported by main.js
+// Live reference - populated in _discoverClusters(), imported by main.js
 export const CLUSTER_COLORS = {};
 let CLUSTER_ANCHORS = {};
 
@@ -370,10 +370,10 @@ export function flyTo({ x, y, z }) {
 
 // COMET ADDITION: update pivot target for comet tracking.
 // We set pivotTarget AND directly copy to pivot each frame so the lerp
-// never lags — the comet moves slowly enough that instant-follow is smooth.
+// never lags - the comet moves slowly enough that instant-follow is smooth.
 export function setPivotTarget({ x, y, z }) {
   pivotTarget.set(x, y, z);
-  pivot.copy(pivotTarget); // no lerp lag — snap directly every frame
+  pivot.copy(pivotTarget); // no lerp lag - snap directly every frame
   // 45 units: close enough to clearly see the comet head,
   // far enough that the full tail behind it stays in the camera frustum
   tgtR = 45;
@@ -398,7 +398,7 @@ function _warp() {
 // ── Scene builders ────────────────────────────────────────────────────────────
 
 function _buildBackground() {
-  const count = 3000; // reduced from 8000 — big perf win for identical visual result
+  const count = 3000; // reduced from 8000 - big perf win for identical visual result
   const pos = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     pos[i*3]   = (Math.random()-0.5)*900;
@@ -464,19 +464,19 @@ function _buildStars(stars) {
   const cntM = stars.filter(s => s.cite > 200 && s.cite <= 5000).length;
   const cntL = stars.filter(s => s.cite > 5000).length;
 
-  console.log(`[galaxy] Star tiers — small(≤200): ${cntS}, med(201-5000): ${cntM}, large(>5000): ${cntL}`);
+  console.log(`[galaxy] Star tiers - small(≤200): ${cntS}, med(201-5000): ${cntM}, large(>5000): ${cntL}`);
 
   const mat = () => new THREE.MeshBasicMaterial({ color: 0xffffff });
 
   // Always create all three meshes with at least 1 slot to avoid null references.
-  // Extra slots beyond actual count are harmless — they'll have scale(0).
+  // Extra slots beyond actual count are harmless - they'll have scale(0).
   instancedSmall = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 4, 4),  mat(), Math.max(1, cntS));
   instancedMed   = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 5, 5),  mat(), Math.max(1, cntM));
   instancedLarge = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 6, 6),  mat(), Math.max(1, cntL));
 
   [instancedSmall, instancedMed, instancedLarge].forEach(im => {
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    // Hide all slots by default — _buildStars will set real ones
+    // Hide all slots by default - _buildStars will set real ones
     for (let i = 0; i < im.count; i++) {
       dummy.position.set(0, 0, 0);
       dummy.quaternion.identity();
@@ -503,7 +503,7 @@ function _buildStars(stars) {
     basePosArray[gi*3+1] = star.y;
     basePosArray[gi*3+2] = star.z;
 
-    // FIX 2: assign tier — if cite=0 (all live API papers), all go to small.
+    // FIX 2: assign tier - if cite=0 (all live API papers), all go to small.
     // That is intentional and correct.
     let tierMesh, localId;
     if (cite > 5000)      { tierMesh = instancedLarge; localId = iL++; }
@@ -525,7 +525,7 @@ function _buildStars(stars) {
   instanceMapLarge = starDataArray.filter(e => e.tierMesh === instancedLarge);
   [instancedSmall, instancedMed, instancedLarge].forEach(im => {
     if (!im) return;
-    im.frustumCulled = false; // instanced meshes need this off — Three.js can't cull them correctly
+    im.frustumCulled = false; // instanced meshes need this off - Three.js can't cull them correctly
     scene.add(im);
   });
 
@@ -564,7 +564,7 @@ function _buildEdges(stars) {
 
     // PERF: cap per-cluster sample to 300 stars for edge building.
     // With 1000+ stars per cluster the O(n²) distance sort is very slow.
-    // We pick a representative sample — the visual result is identical.
+    // We pick a representative sample - the visual result is identical.
     const sample = members.length > 300
       ? members.filter((_, i) => i % Math.ceil(members.length / 300) === 0)
       : members;
@@ -575,7 +575,7 @@ function _buildEdges(stars) {
         if (b === a) continue;
         const sb = sample[b];
         const dx=sa.x-sb.x, dy=sa.y-sb.y, dz=sa.z-sb.z;
-        dists.push({ b, d: dx*dx+dy*dy+dz*dz }); // skip sqrt — only need relative order
+        dists.push({ b, d: dx*dx+dy*dy+dz*dz }); // skip sqrt - only need relative order
       }
       dists.sort((x,y) => x.d - y.d);
       const maxD = dists[Math.min(K-1, dists.length-1)].d;
@@ -771,7 +771,7 @@ function _animateFloats() {
   // Only animate stars within ~60 units of the camera pivot (visible cluster)
   // Stars far away are invisible at normal zoom so no need to update them
   const px = pivot.x, py = pivot.y, pz = pivot.z;
-  const DIST2 = 120 * 120; // squared distance threshold — scaled with new cluster size
+  const DIST2 = 120 * 120; // squared distance threshold - scaled with new cluster size
 
   let nS=false, nM=false, nL=false;
   const b = basePosArray;

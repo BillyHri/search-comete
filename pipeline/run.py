@@ -1,14 +1,14 @@
 """
-search-comete — pipeline/run.py
+search-comete - pipeline/run.py
 
 Usage:
-  # Quick test — 10 papers per topic (~3,000 total, ~5 min)
+  # Quick test - 10 papers per topic (~3,000 total, ~5 min)
   python -m pipeline.run --limit 10 --skip-index
 
-  # Good run — 50 papers per topic (~15,000 total, ~45 min)
+  # Good run - 50 papers per topic (~15,000 total, ~45 min)
   python -m pipeline.run --limit 50 --skip-index
 
-  # Maximum — 200 papers per topic (~60,000 total, several hours)
+  # Maximum - 200 papers per topic (~60,000 total, several hours)
   python -m pipeline.run --limit 200 --skip-index
 
   # Resume after a crash
@@ -403,7 +403,7 @@ def main():
         fetch_fn, source = fetch_arxiv, "arXiv"
     elif args.use_ss:
         fetch_fn, source = fetch_semantic_scholar, "Semantic Scholar"
-        print("  ⚠ Semantic Scholar rate-limits hard — OpenAlex is recommended for bulk runs")
+        print("  ⚠ Semantic Scholar rate-limits hard - OpenAlex is recommended for bulk runs")
     else:
         fetch_fn, source = fetch_openalex, "OpenAlex"
         if email := os.getenv("OPENALEX_EMAIL", ""):
@@ -521,11 +521,11 @@ def main():
             print(f"  Total in index: {es.count(index='knowledge_galaxy')['count']:,}")
         except Exception as e:
             print(f"  ES unavailable: {e}")
-            print("  stars.json still exported — frontend can use it directly")
+            print("  stars.json still exported - frontend can use it directly")
     else:
         print("\n[5/5] Skipping Elasticsearch (--skip-index)")
 
-    print(f"\n✓ Done — {len(docs):,} papers")
+    print(f"\n✓ Done - {len(docs):,} papers")
     print(f"\n  cp pipeline/stars.json frontend/public/stars.json")
     print(f"  Ctrl+Shift+R in browser")
 

@@ -1,13 +1,13 @@
 /**
- * search-comete — wormhole.js
+ * search-comete - wormhole.js
  *
  * Wormhole button in the HUD that toggles dark ↔ light mode.
  * Dark → Light : Supernova explosion (bright flash expanding outward)
  * Light → Dark : Dwarf planet dying  (implosion, screen collapses to black)
  *
  * Public API:
- *   initWormhole(onToggle)   — inject button + styles, wire click
- *   getCurrentMode()         — returns 'dark' | 'light'
+ *   initWormhole(onToggle)   - inject button + styles, wire click
+ *   getCurrentMode()         - returns 'dark' | 'light'
  */
 
 import { playSupernova, playDwarfDeath } from './sound.js';
@@ -32,7 +32,7 @@ const DARK_VARS = {
 };
 
 const LIGHT_VARS = {
-  '--ink':     '#f5f2eb',    // inverted — light bg
+  '--ink':     '#f5f2eb',    // inverted - light bg
   '--paper':   '#1a1a2e',    // dark text on light
   '--dim':     'rgba(26,26,46,0.6)',
   '--dimmer':  'rgba(26,26,46,0.3)',
@@ -126,7 +126,7 @@ function _injectStyles() {
     }
 
     /* ══════════════════════════════════════════════
-       LIGHT MODE — warm ivory, easy on the eyes
+       LIGHT MODE - warm ivory, easy on the eyes
        Base palette:
          bg:        #f4f0e8  warm ivory
          surface:   #ede9df  slightly darker ivory for panels
@@ -226,7 +226,7 @@ function _injectStyles() {
     body.light-mode #year-readout { color: rgba(44,36,22,0.48) !important; }
     body.light-mode #year-slider { accent-color: #7a5c1e !important; }
 
-    /* ── Detail panel — frosted ivory ── */
+    /* ── Detail panel - frosted ivory ── */
     body.light-mode #detail-panel {
       background: rgba(244,240,232,0.97) !important;
       border-left: 0.5px solid rgba(44,36,22,0.12) !important;
@@ -361,7 +361,7 @@ function _triggerSupernova() {
 
   const overlay = document.getElementById('supernova-overlay');
 
-  // Phase 1: Flash expands (0–400ms)
+  // Phase 1: Flash expands (0-400ms)
   overlay.style.transition = 'none';
   overlay.style.opacity = '0';
   overlay.style.transform = 'scale(0.1)';
@@ -372,14 +372,14 @@ function _triggerSupernova() {
     overlay.style.transform = 'scale(2.5)';
   });
 
-  // Phase 2: Hold white (400–600ms), apply light mode
+  // Phase 2: Hold white (400-600ms), apply light mode
   setTimeout(() => {
     _applyMode('light');
     if (_renderer) _renderer.setClearColor(0xf4f0e8, 1);
     document.getElementById('wormhole-btn').innerHTML = _wormholeSVG('light');
   }, 380);
 
-  // Phase 3: Fade overlay out (600–1100ms)
+  // Phase 3: Fade overlay out (600-1100ms)
   setTimeout(() => {
     overlay.style.transition = 'opacity 0.55s ease-in, transform 0.55s ease-in';
     overlay.style.opacity = '0';
@@ -401,7 +401,7 @@ function _triggerDwarfDeath() {
 
   const overlay = document.getElementById('dwarf-overlay');
 
-  // Phase 1: Darkness closes in from edges (0–600ms)
+  // Phase 1: Darkness closes in from edges (0-600ms)
   overlay.style.transition = 'none';
   overlay.style.opacity = '0';
   overlay.style.transform = 'scale(2)';
@@ -419,7 +419,7 @@ function _triggerDwarfDeath() {
     document.getElementById('wormhole-btn').innerHTML = _wormholeSVG('dark');
   }, 580);
 
-  // Phase 3: Final implosion flash + fade (600–900ms)
+  // Phase 3: Final implosion flash + fade (600-900ms)
   setTimeout(() => {
     overlay.style.transition = 'opacity 0.3s ease-out';
     overlay.style.opacity = '0';

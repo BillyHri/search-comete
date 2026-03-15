@@ -1,10 +1,10 @@
 /**
- * search-comete — panel.js
+ * search-comete - panel.js
  * Manages the right-hand detail panel: show, close, similar papers.
  *
  * Key fixes vs previous version:
  *  - _loadSimilar() no longer tries to fetch /api/paper/{openalex_url} when
- *    ES is down — that was causing 3s timeouts on every star click because
+ *    ES is down - that was causing 3s timeouts on every star click because
  *    the OpenAlex URL ID gets URL-encoded into a nonsense endpoint.
  *  - Similar papers now search the FULL loaded corpus (all stars.json papers)
  *    not just the 31 hardcoded FALLBACK_PAPERS.
@@ -15,7 +15,7 @@
 import { flyTo, getRemappedPos, togglePinned, isPinned } from './galaxy.js';
 
 
-// Full corpus — set by main.js via setCorpus() after stars load
+// Full corpus - set by main.js via setCorpus() after stars load
 let _corpus = [];
 export function setCorpus(stars) { _corpus = stars; }
 
@@ -83,11 +83,11 @@ export function showDetail(paper) {
   badge.style.background   = _hexToRgba(paper.color || '#888888', 0.15);
   badge.style.color        = css;
 
-  document.getElementById('detail-title').textContent   = paper.title   || '—';
-  document.getElementById('detail-authors').textContent = paper.authors  || '—';
+  document.getElementById('detail-title').textContent   = paper.title   || '-';
+  document.getElementById('detail-authors').textContent = paper.authors  || '-';
   document.getElementById('detail-year').textContent    =
     `${paper.year || ''}  ·  ${_getCite(paper).toLocaleString()} citations`;
-  document.getElementById('detail-abstract').textContent = paper.abstract || '—';
+  document.getElementById('detail-abstract').textContent = paper.abstract || '-';
 
   const score = paper.score !== undefined ? paper.score : 0.5 + Math.random() * 0.4;
   document.getElementById('score-bar').style.width      = Math.round(score * 100) + '%';
@@ -156,7 +156,7 @@ async function _loadSimilar(paper) {
     } catch { /* ES not running, skip silently */ }
   }
 
-  // Local fallback — search full corpus by cluster + title word overlap
+  // Local fallback - search full corpus by cluster + title word overlap
   if (!similar.length) {
     similar = _findSimilarLocally(paper, 5);
   }
@@ -168,7 +168,7 @@ async function _loadSimilar(paper) {
 
   container.innerHTML = similar.map(s => `
     <div class="similar-item" data-id="${_escAttr(String(s.id))}">
-      <div class="similar-title">${_escHtml(s.title || '—')}</div>
+      <div class="similar-title">${_escHtml(s.title || '-')}</div>
       <div class="similar-meta">${_escHtml((s.authors||'').split(',')[0])} · ${s.year || ''}</div>
     </div>
   `).join('');
