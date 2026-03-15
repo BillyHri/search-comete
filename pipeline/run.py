@@ -509,7 +509,12 @@ def main():
     if not args.skip_index:
         print(f"\n[5/5] Indexing → Elasticsearch ({args.es_host})…")
         try:
-            es = Elasticsearch(args.es_host)
+            api_key = os.getenv("ES_API_KEY", "")
+            if api_key:
+                print(f"  Using API key authentication")
+                es = Elasticsearch(args.es_host, api_key=api_key)
+            else:
+                es = Elasticsearch(args.es_host)
             es.info()
             setup_index(es)
             bulk_index(es, docs)
