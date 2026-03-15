@@ -1,4 +1,4 @@
-# search-comète 🌌
+# search-comète
 
 > Navigate the universe of ideas. Every paper is a star.
 
