@@ -38,7 +38,7 @@ function _ensureCtx() {
   if (_ctx) return;
   _ctx = new (window.AudioContext || window.webkitAudioContext)();
   _masterGain = _ctx.createGain();
-  _masterGain.gain.setValueAtTime(0.28, _ctx.currentTime); // quieter master
+  _masterGain.gain.setValueAtTime(0.12, _ctx.currentTime); // quieter master
   _masterGain.connect(_ctx.destination);
 }
 
@@ -63,14 +63,14 @@ function _startAmbient() {
   // Very quiet pad gain — fades in over 8s
   const padGain = _ctx.createGain();
   padGain.gain.setValueAtTime(0, now);
-  padGain.gain.linearRampToValueAtTime(0.022, now + 8.0);
+  padGain.gain.linearRampToValueAtTime(0.008, now + 14.0); // very slow fade, barely there
   padGain.connect(_masterGain);
 
   // Reverb-like convolution via feedback delay
   const delay = _ctx.createDelay(4.0);
-  delay.delayTime.setValueAtTime(2.4, now);
+  delay.delayTime.setValueAtTime(3.2, now); // longer delay = more liminal space
   const feedback = _ctx.createGain();
-  feedback.gain.setValueAtTime(0.55, now);
+  feedback.gain.setValueAtTime(0.72, now); // more reverb tail = bigger space
   const delayFilter = _ctx.createBiquadFilter();
   delayFilter.type = 'lowpass';
   delayFilter.frequency.setValueAtTime(800, now);
@@ -107,7 +107,7 @@ function _startAmbient() {
     o.type = 'sine';
     o.frequency.setValueAtTime(f, now);
     const g = _ctx.createGain();
-    g.gain.setValueAtTime(0.008, now); // very quiet
+    g.gain.setValueAtTime(0.003, now); // barely audible shimmer
     o.connect(g); g.connect(padGain);
     o.start(now);
     return o;
@@ -132,14 +132,14 @@ function _startAmbient() {
     mel.connect(melGain);
     melGain.gain.cancelScheduledValues(t);
     melGain.gain.setValueAtTime(0, t);
-    melGain.gain.linearRampToValueAtTime(0.018, t + 0.8);
-    melGain.gain.linearRampToValueAtTime(0, t + 6.0);
+    melGain.gain.linearRampToValueAtTime(0.007, t + 2.2); // slower, ghostly rise
+    melGain.gain.linearRampToValueAtTime(0, t + 9.0); // longer decay, liminal
     mel.start(t);
     mel.stop(t + 6.5);
-    const nextIn = 9000 + Math.random() * 8000;
+    const nextIn = 18000 + Math.random() * 22000; // very infrequent, liminal
     _melodyTimeout = setTimeout(_playMelodyNote, nextIn);
   }
-  _melodyTimeout = setTimeout(_playMelodyNote, 5000 + Math.random() * 4000);
+  _melodyTimeout = setTimeout(_playMelodyNote, 20000 + Math.random() * 15000); // delayed first note
 
   _ambientNodes = { padGain, pads, shimmers, delay, feedback, melGain, _melodyTimeout };
 }

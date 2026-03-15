@@ -11,8 +11,8 @@ from elasticsearch import AsyncElasticsearch
 from typing import Optional
 import os
 
-from .models import SearchResponse, PaperDetail
-from . import search as es_search
+from models import SearchResponse, PaperDetail
+import search as es_search
 
 app = FastAPI(title="search-comete API", version="0.1.0")
 
