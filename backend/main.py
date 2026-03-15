@@ -31,6 +31,8 @@ ES_API_KEY  = os.getenv("ES_API_KEY",  "")
 def _make_es_client() -> AsyncElasticsearch:
     if ES_CLOUD_ID and ES_API_KEY:
         return AsyncElasticsearch(cloud_id=ES_CLOUD_ID, api_key=ES_API_KEY)
+    if ES_API_KEY:
+        return AsyncElasticsearch(ES_HOST, api_key=ES_API_KEY)
     return AsyncElasticsearch(ES_HOST)
 
 es = _make_es_client()
